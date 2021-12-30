@@ -1,0 +1,1849 @@
+unit sync_sprav;
+
+{$mode objfpc}{$H+}
+
+interface
+
+uses
+  Classes, SysUtils,forms,unix,dialogs,ZConnection, ZDataset,strutils,db;
+
+// Забираем список синхронизируемых таблиц на центральном сервере
+// и максимальную дату в таблице и все это кладем в массив
+function get_table_sync():boolean;
+
+// Делаем выборки и копируем если нужно данные с центрального сервера на локальный
+function copy_data_sync():boolean;
+
+
+///==================== OLD ========================//
+// Синхронизация данных
+ function Sync_data():byte;  // 0 - успех
+// Расчет локального списка расписаний
+ function Sync_local_shedule():byte;
+// Процедура сопоставления типов PostgreSQL и ZeosDBO
+function get_type_value(myquery:TZQuery;field_n:integer):string;
+
+
+
+implementation
+uses
+  main,platproc;
+
+
+// Процедура сопоставления типов PostgreSQL и ZeosDBO
+function get_type_value(myquery:TZQuery;field_n:integer):string;
+ var
+   my_type:TField;
+begin
+  // если NULL
+  if myquery.Fields[field_n].IsNull then
+    begin
+      Result:='NULL';
+      exit;
+    end;
+
+  // Разбираем по типам поля
+  case myquery.Fields[field_n].DataType of
+         // Numeric
+         ftSmallint,
+         ftInteger,
+         ftWord,
+         ftFloat,
+         ftCurrency,
+         ftBytes,
+         ftVarBytes,
+         ftAutoInc,
+         ftLargeint,
+         ftGuid: Result:=myquery.Fields[field_n].text;
+
+         // Char
+         ftString,
+         ftDate,
+         ftTime,
+         ftDateTime,
+         ftBlob,
+         ftMemo,
+         ftGraphic,
+         ftFmtMemo,
+         ftTypedBinary,
+         ftFixedChar,
+         ftWideString,
+         ftVariant,
+         ftTimeStamp,
+         ftFixedWideChar,
+         ftWideMemo: Result:=quotedstr(myquery.Fields[field_n].text);
+
+         // Boolean
+         ftBoolean:Result:=quotedstr(myquery.Fields[field_n].text);
+
+  else
+         Result:=quotedstr(myquery.Fields[field_n].text);
+  end;
+
+
+end;
+
+// Синхронизация данных
+function Sync_data():byte;
+ var
+   tekflag:byte=0;
+   n,m,k,b:integer;
+   kol_zap:integer=0;
+   kol_field:integer=0;
+   tek_table:string;
+   tekfield:string;
+   strstr:string='';
+   maxcreate:string;
+   tocka:byte;
+   BlobStreamIZ: TStream;
+   BlobStreamW: TStream;
+   flag_blob:boolean;
+
+    Fieldtypenames : Array [TFieldType] of String[15] =
+    (
+      'Unknown',
+      'String',
+      'Smallint',
+      'Integer',
+      'Word',
+      'Boolean',
+      'Float',
+      'Currency',
+      'BCD',
+      'Date',
+      'Time',
+      'DateTime',
+      'Bytes',
+      'VarBytes',
+      'AutoInc',
+      'Blob',
+      'Memo',
+      'Graphic',
+      'FmtMemo',
+      'ParadoxOle',
+      'DBaseOle',
+      'TypedBinary',
+      'Cursor',
+      'FixedChar',
+      'WideString',
+      'Largeint',
+      'ADT',
+      'Array',
+      'Reference',
+      'DataSet',
+      'OraBlob',
+      'OraClob',
+      'Variant',
+      'Interface',
+      'IDispatch',
+      'Guid',
+      'TimeStamp',
+      'FMTBcd',
+      'FixedWideChar',
+      'WideMemo'
+    );
+begin
+
+  form1.write_log('=============================sync_data========================================');
+  // ================Проверяем доступность серверов======================
+  form1.write_log('+Определение доступности Центрального и Локального серверов');
+
+  // Подключаемся к центральному серверу
+ If not(Connect2(form1.Zconnection1, 1)) then
+    begin
+      form1.write_log('- Центральный сервер:  - НЕТ СОЕДИНЕНИЯ');
+      application.ProcessMessages;
+      tekflag:=1;
+    end;
+
+  // Подключаемся к локальному серверу
+   If not(Connect2(form1.Zconnection2, 2)) then
+    begin
+      form1.write_log('- Локальный сервер: - НЕТ СОЕДИНЕНИЯ');
+      application.ProcessMessages;
+      tekflag:=1;
+    end;
+
+
+  if tekflag=1 then
+    begin
+     form1.write_log('!!!4 ОСТАНОВКА    НЕТ СОЕДИНЕНИЯ C СЕРВЕРАМИ');
+     application.ProcessMessages;
+     form1.ZConnection1.Disconnect;
+     form1.ZConnection2.Disconnect;
+     Result:=1;
+     exit;
+    end;
+
+  // ЗАБИРАЕМ СПИСОК ОБНОВЛЯЕМЫХ ТАБЛИЦ С ЦЕНТРАЛЬНОГО СЕРВЕРА
+  form1.ZQuery1.SQL.Clear;
+  form1.ZQuery1.SQL.Add('SELECT name_table FROM av_sync_table;');
+    try
+     form1.ZQuery1.open;
+     if form1.ZQuery1.RecordCount=0 then
+       begin
+         tekflag:=1;
+         form1.ZQuery1.Close;
+         form1.Zconnection1.disconnect;
+         form1.Zconnection2.disconnect;
+         form1.write_log('!!!5 Обновление данных отключено на ЦС   ОПЕРАЦИЯ ВЫПОЛНЕНА УСПЕШНО ');
+         application.ProcessMessages;
+         form1.ZConnection1.Disconnect;
+         Result:=0;
+         exit;
+       end;
+     except
+        form1.ZQuery1.Close;
+        form1.Zconnection1.disconnect;
+        form1.Zconnection2.disconnect;
+        form1.write_log('- Невозможно получить список синхронизируемых справочников - НЕТ СОЕДИНЕНИЯ С ЦЕНТРАЛЬНЫМ СЕРВЕРОМ');
+        form1.write_log('!!!6 ОСТАНОВКА    ПРОДОЛЖЕНИЕ НЕВОЗМОЖНО ');
+        application.ProcessMessages;
+        form1.ZConnection1.Disconnect;
+        Result:=1;
+        exit;
+    end;
+
+
+   form1.write_log('- Успешно получен список синхронизируемых справочников.');
+   form1.write_log('- Выполняем синхронизацию по списку:');
+   application.ProcessMessages;
+   // ===================================== ЦИКЛ СИНХРОНИЗАЦИИ ЛОКАЛЬНЫХ СПРАВОЧНИКОВ ПО СПИСКУ
+               //======================Открываем транзакцию
+              try
+                 If not form1.Zconnection2.InTransaction then
+                    begin
+                      form1.Zconnection2.StartTransaction;
+                    end
+                 else
+                   begin
+                     form1.write_log('!!!7 ОСТАНОВКА   Незавершенная транзакция ');
+                     application.ProcessMessages;
+                     form1.ZConnection2.Rollback;
+                     Result:=1;
+                     exit;
+                   end;
+
+   for n:=0 to form1.ZQuery1.RecordCount-1 do
+      begin
+       //form1.write_log('- Обновляются данные таблицы '+tek_table);
+             application.ProcessMessages;
+
+       //-------------------------------- На ЛС определяем для текущей таблицы максимальный timestamp
+        // Очищаем прямые таблицы с группировкой данных по createdate
+
+         tek_table:=trim(form1.ZQuery1.FieldByName('name_table').AsString);
+         //if (trim(tek_table)='av_users_arm') then
+         //  begin
+         //    form1.ZQuery2.SQL.Clear;
+         //    form1.ZQuery2.SQL.add('delete from av_users_arm;');
+         //    form1.ZQuery2.SQL.Add('SELECT to_char(current_date-10000,'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+') as max1;');
+         //  end
+         //else
+           begin
+             form1.ZQuery2.SQL.Clear;
+             form1.ZQuery2.SQL.Add('SELECT distinct(to_char(max(createdate),'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+')) as max1 FROM '+tek_table+';');
+           end;
+         try
+            //If tek_table='av_shedule_atp' then
+             //showmessage(form1.ZQuery2.SQL.Text);//$
+          form1.ZQuery2.open;
+         except
+
+          form1.write_log('- Таблица '+tek_table+' недоступна на локальном сервере !');
+          form1.write_log('!!!8 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+                application.ProcessMessages;
+          form1.ZConnection1.Disconnect;
+          form1.ZConnection2.Disconnect;
+          Result:=1;
+          exit;
+         end;
+
+        maxcreate:=trim(form1.ZQuery2.FieldByName('max1').asString);
+
+        //----------------------------------- Делаем выборку с центрального сервера
+        form1.ZQuery3.Connection:=form1.ZConnection1;
+        form1.ZQuery3.SQL.Clear;
+        form1.ZQuery3.SQL.Add('SELECT *,to_char(createdate,'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+') as createdatems FROM '+tek_table);
+        if maxcreate='' then
+              begin
+                form1.ZQuery3.SQL.Add(' where createdate='+IFTHEN(not(trim(form1.ZQuery2.FieldByName('max1').asString)=''),quotedstr((form1.ZQuery2.FieldByName('max1').AsString)),('createdate'))+';');
+                //form1.ZQuery3.SQL.Add(' where createdate='+IFTHEN(not(maxcreate=''),quotedstr(maxcreate),'createdate')+';');
+              end
+         else
+              begin
+                   form1.ZQuery3.SQL.Add(' where createdate>'+IFTHEN(not(trim(form1.ZQuery2.FieldByName('max1').asString)=''),quotedstr((form1.ZQuery2.FieldByName('max1').AsString)),('createdate'))+';');
+                //form1.ZQuery3.SQL.Add(' where createdate>'+IFTHEN(not(maxcreate=''),quotedstr(maxcreate),'createdate')+';');
+              end;
+
+         try
+          //If tek_table='av_shedule_atp' then
+           //showmessage(form1.ZQuery3.SQL.Text);//$
+           form1.ZQuery3.open;
+           if form1.ZQuery3.RecordCount=0 then
+              begin
+               form1.Memo1.Lines.Delete(form1.Memo1.Lines.Count-1);
+               form1.write_log('Таблица '+inttostr(n+1)+' из '+inttostr(form1.ZQuery1.RecordCount)+' | '+tek_table+' - обновление не требуется !');
+                     application.ProcessMessages;
+              end;
+         except
+          //showmessage(form1.ZQuery3.SQL.Text);
+          form1.write_log('- Таблица '+tek_table+' недоступна на локальном сервере !');
+          form1.write_log('!!!9 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+                application.ProcessMessages;
+          form1.ZConnection1.Disconnect;
+          form1.ZConnection2.Disconnect;
+          Result:=1;
+          exit;
+         end;
+
+         // --------------------------------- Обновляем данные из ЦС в ЛС
+         if form1.ZQuery3.RecordCount>0 then
+            begin
+               kol_zap:=0;
+                 for m:=0 to form1.ZQuery3.RecordCount-1 do
+                   begin
+                     flag_blob:=false;
+                     strstr:='';
+                     form1.Memo1.Lines.Delete(form1.Memo1.Lines.Count-1);
+                     form1.Memo1.Lines.add('- Таблица №'+inttostr(n+1)+' из '+inttostr(form1.ZQuery1.RecordCount)+' | '+tek_table+' - выполнено '+inttostr(m+1)+' из '+inttostr(form1.ZQuery3.RecordCount));
+                     application.ProcessMessages;
+                     // Вставляем данные из ЦС ZQuery3 в ЛС ZQuery2
+                     form1.ZQuery2.SQL.Clear;
+                     form1.ZQuery2.SQL.add('insert into '+tek_table+' (');
+                      kol_field:=0;
+                      kol_field:=form1.ZQuery3.FieldCount;
+                     for k:=0 to form1.ZQuery3.FieldCount-2 do
+                      begin
+                         form1.ZQuery2.SQL.add((trim(form1.ZQuery3.Fields[k].FieldName)));
+                         if k<(form1.ZQuery3.FieldCount-2) then form1.ZQuery2.SQL.add(',');
+                      end;
+                     form1.ZQuery2.SQL.add(') values (');
+        //if (tek_table='av_spr_ats') and (form1.ZQuery3.Fields[k].FieldName='foto') then showmessage(form1.ZQuery2.sql.Text);//$
+                     for k:=0 to form1.ZQuery3.FieldCount-1 do
+                      begin
+
+                   if (tek_table='av_spr_ats') and (form1.ZQuery3.Fields[k].FieldName='foto') then
+                     begin
+                        //If form1.ZQuery3.Fields[k].DataType=ftUnknown then
+                        //  begin
+                        //    showmessage('1');
+                        //  end;
+                        //If form1.ZQuery3.Fields[k].DataType=ftBlob then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        // If form1.ZQuery3.Fields[k].DataType=ftGraphic then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        //  If form1.ZQuery3.Fields[k].DataType=ftIDispatch then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        //  If form1.ZQuery3.Fields[k].DataType=ftVariant then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        //   If form1.ZQuery3.Fields[k].DataType=ftDataSet then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        //    If form1.ZQuery3.Fields[k].DataType=ftInterface then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        //     If form1.ZQuery3.Fields[k].DataType=ftOraClob then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+                        //      If form1.ZQuery3.Fields[k].DataType=ftOraBlob then
+                        //  begin
+                        //    showmessage(inttostr(k)+' '+form1.ZQuery3.Fields[k].FieldName);;
+                        //  end;
+    //                    , , ftSmallint, ftInteger, ftWord,
+    //ftBoolean, ftFloat, ftCurrency, ftBCD, ftDate,  ftTime, ftDateTime,
+    //ftBytes, ftVarBytes, ftAutoInc, ftMemo, , ftFmtMemo,
+    //ftParadoxOle, ftDBaseOle, ftTypedBinary, ftCursor, ftFixedChar,
+    //ftWideString, ftLargeint, ftADT, ftArray, ftReference,
+    //, ftGuid, ftTimeStamp, ftFMTBcd, ftFixedWideChar, ftWideMemo
+                   //    // showmessage(form1.ZQuery3.Fields[k].AsString);
+                   //    //showmessage(Fieldtypenames[form1.ZQuery3.Fields[k].DataType]);
+                   //    //if form1.ZQuery3.Fields[k].DataType = ftblob thne showmessage('ftblob');
+                   //    //if form1.ZQuery3.Fields[k].DataType = ftmemo thne showmessage('ftMemo');
+                   //    //if form1.ZQuery3.Fields[k].DataType = ftblob thne showmessage('ftblob');
+                   //    //if form1.ZQuery3.Fields[k].DataType = ftblob thne showmessage('ftblob');
+                   //    //if form1.ZQuery3.Fields[k].DataType = ftblob thne showmessage('ftblob');
+                   //
+                     end;
+                   //
+
+                   //form1.ZQuery3.Fields[k].DataType.
+                    //Если BLOB or MEMO
+                   if k<=(kol_field-1) then
+                     If (form1.ZQuery3.Fields[k].DataType=ftBlob) or (form1.ZQuery3.Fields[k].DataType=ftMemo) then
+                     begin
+                            // перекидываем через Stream
+                            // BlobStreamIZ c ЦС
+                            // Из ЦС
+                            form1.ZQuery2.SQL.add('&blobs'+inttostr(k));
+                            BlobStreamIZ := form1.ZQuery3.CreateBlobStream(form1.ZQuery3.fields[k], bmRead);
+                            form1.ZQuery2.ParamByName('blobs'+inttostr(k)).LoadFromStream(BlobStreamIZ,form1.ZQuery3.Fields[k].DataType);
+          //if (tek_table='av_spr_ats') and (form1.ZQuery3.Fields[k].FieldName='foto') then showmessage(form1.ZQuery2.sql.Text);//$
+                            flag_blob:=true;
+                       end;
+
+                       // Если createdate
+                       if (trim(form1.ZQuery3.Fields[k].FieldName)='createdate') then
+                            begin
+                              form1.ZQuery2.SQL.add(IFTHEN(form1.ZQuery3.FieldByName('createdatems').asString='','null',quotedstr(form1.ZQuery3.FieldByName('createdatems').AsString)));
+                              kol_field:=kol_field-1;
+                            end;
+
+                       // Если не createdate  и не createdatems и не ftblob и не ftmemo (memo,text,varchar,bytea)
+                        if not((trim(form1.ZQuery3.Fields[k].FieldName)='createdatems')) and
+                           not((trim(form1.ZQuery3.Fields[k].FieldName)='createdate')) and
+                           not(form1.ZQuery3.Fields[k].DataType=ftMemo) and
+                           not(form1.ZQuery3.Fields[k].DataType=ftBlob) then
+                            begin
+                              form1.ZQuery2.SQL.add(IFTHEN(form1.ZQuery3.Fields[k].Text='',ifthen(form1.ZQuery3.Fields[k].IsNull,'null',quotedstr('')),quotedstr(form1.ZQuery3.Fields[k].text)));
+                              //showmessage(tek_table+#13+form1.ZQuery3.Fields[k].FieldName);
+                            end;
+                        if (k<(kol_field-1)) then form1.ZQuery2.SQL.add(',');
+
+             //if (tek_table='av_spr_uslugi') and (form1.ZQuery3.Fields[k].FieldName='swed') then
+             //        begin
+             //           showmessage(form1.ZQuery2.sql.Text);
+             //          //showmessage(Fieldtypenames[form1.ZQuery3.Fields[k].DataType]);
+             //        end;
+
+                  end;
+                     form1.ZQuery2.SQL.add(');');
+
+                   if not(form1.ZQuery2.SQL.text='') then
+                      begin
+                     try
+                      //if tek_table='av_spr_uslugi' then showmessage(form1.ZQuery2.SQL.Text);
+                      form1.ZQuery2.open;
+                      kol_zap:=kol_zap+1;
+                    except
+                    form1.Memo1.lines.Add(form1.ZQuery2.SQL.Text);
+                    //showmessage(form1.ZQuery2.SQL.Text);
+                    end;
+                  end;
+
+                   if flag_blob=true then
+                      begin
+                       if BlobStreamIZ.Size>0 then BlobStreamIZ.Free;
+                      end;
+
+                    form1.ZQuery3.Next;
+                  end;
+                 //If n=5 then break;//$
+               form1.write_log('Таблица №'+inttostr(n+1)+' из '+inttostr(form1.ZQuery1.RecordCount)+' | '+tek_table+' - добавлено: '+inttostr(m+1));
+           end;
+
+     form1.ZQuery1.Next;
+   end;
+   //-------------------------- Завершение транзакции
+       form1.Zconnection2.Commit;
+    except
+       form1.ZConnection2.Rollback;
+       form1.write_log('!!!10 ОСТАНОВКА   Незавершенная транзакция ');
+             application.ProcessMessages;
+       form1.ZConnection2.Rollback;
+       Result:=1;
+       exit;
+     end;
+
+    //#
+    If 1<>1 then
+      begin
+
+       //================= Удаляем дубликаты пришедших записей ===================
+                 //======================Открываем транзакцию
+              try
+                 If not form1.Zconnection2.InTransaction then
+                    begin
+                      form1.Zconnection2.StartTransaction;
+                    end
+                 else
+                   begin
+                     form1.write_log('!!!11 ОСТАНОВКА   Незавершенная транзакция ');
+                           application.ProcessMessages;
+                     form1.ZConnection2.Rollback;
+                     Result:=1;
+                     exit;
+                   end;
+
+       form1.write_log(':::::::::::::: ПРОВЕРКА НА ДУБЛИКАТЫ В ТАБЛИЦАХ :::::::::::::::::::::');
+        // ------- Определяем запрос для текущей таблицы на состав полей из ZQuery1-------
+         form1.ZQuery3.Connection:=form1.ZConnection1;
+         form1.ZQuery3.SQL.Clear;
+         form1.ZQuery3.SQL.Add('select name_table as table_name from av_sync_table;');
+         try
+            form1.ZQuery3.open;
+           if form1.ZQuery3.RecordCount=0 then
+              begin
+                form1.write_log('- Список таблиц недоступен на локальном сервере !');
+                form1.write_log('!!!12 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+                      application.ProcessMessages;
+                form1.ZConnection1.Disconnect;
+                form1.ZConnection2.Disconnect;
+                Result:=1;
+                exit;
+              end;
+         except
+            form1.write_log('- Список таблиц недоступен на локальном сервере !');
+            form1.write_log('!!!13 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+                  application.ProcessMessages;
+            form1.ZConnection1.Disconnect;
+            form1.ZConnection2.Disconnect;
+            Result:=1;
+            exit;
+         end;
+
+      for n:=0 to form1.ZQuery3.RecordCount-1 do
+       begin
+        tek_table:=trim(form1.ZQuery3.FieldByName('table_name').asString);
+        form1.ZQuery2.SQL.Clear;
+         form1.ZQuery2.SQL.Add('select * from information_schema.COLUMNS where table_name='+quotedstr(tek_table)+';');
+         try
+            form1.ZQuery2.open;
+         except
+            form1.write_log('- Таблица с данными '+tek_table+' недоступна на локальном сервере !');
+            form1.write_log('!!!14 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+                  application.ProcessMessages;
+            form1.ZConnection1.Disconnect;
+            form1.ZConnection2.Disconnect;
+            Result:=1;
+            exit;
+         end;
+
+         //If (trim(tek_table)='av_spr_ats') then
+         //  begin
+         //   sleep(1);
+         //   end;
+
+        // Оформляем скрипт сравнения и удаления
+        //
+        //  !!!!!!!!
+        // УДАЛЯЮТСЯ ТОЛЬКО ТЕ ЗАПИСИ, КОТОРЫЕ ДУБЛИРУЮТСЯ ПО ВСЕМ ПОЛЯМ,
+        // КРОМЕ CREATEDATE !!!!!!
+        //  !!!!!!!
+        //
+       if (form1.ZQuery2.RecordCount>0)
+          //and not(trim(tek_table)='av_users_arm') //$
+          //and (trim(tek_table)='av_spr_ats') //$
+          then
+        begin
+               form1.ZQuery4.SQL.Clear;
+               form1.ZQuery4.SQL.Add('delete from '+trim(tek_table)+' z where (');
+               tocka:=0;
+               for b:=0 to form1.ZQuery2.RecordCount-1 do
+                  begin
+                    //if not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user')
+                       If  not(trim(form1.ZQuery2.FieldByName('column_name').asString)='del')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user_first')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='createdate_first') then
+                      begin
+                       IF  (not(trim(tek_table)='av_users_arm') and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user'))
+                           or ((trim(tek_table)='av_users_arm') and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_usr')) then
+                        begin
+                        if tocka>0 then form1.ZQuery4.SQL.Add(',');
+                        form1.ZQuery4.SQL.Add('z.'+trim(form1.ZQuery2.FieldByName('column_name').asString));
+                        tocka:=1;
+                        end;
+                      end;
+                   form1.ZQuery2.Next;
+                  end;
+               form1.ZQuery4.SQL.Add(') not in (SELECT ');
+               form1.ZQuery2.First;
+               tocka:=0;
+               for b:=0 to form1.ZQuery2.RecordCount-1 do
+                  begin
+                    //if     not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user')
+                     If not(trim(form1.ZQuery2.FieldByName('column_name').asString)='del')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user_first')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='createdate_first') then
+                      begin
+                        IF (not(trim(tek_table)='av_users_arm') and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user'))
+                           or ((trim(tek_table)='av_users_arm') and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_usr')) then
+                        begin
+                        if tocka>0 then form1.ZQuery4.SQL.Add(',');
+                        if trim(form1.ZQuery2.FieldByName('column_name').asString)='createdate' then
+                          begin
+                            form1.ZQuery4.SQL.Add('max(a.createdate) as createdate');
+                          end
+                        else
+                          begin
+                           form1.ZQuery4.SQL.Add('a.'+trim(form1.ZQuery2.FieldByName('column_name').asString));
+                          end;
+                        tocka:=1;
+                        end;
+                      end;
+                   form1.ZQuery2.Next;
+                  end;
+               form1.ZQuery4.SQL.Add(' FROM '+trim(tek_table)+' a GROUP BY ');
+               tocka:=0;
+               form1.ZQuery2.First;
+               for b:=0 to form1.ZQuery2.RecordCount-1 do
+                  begin
+                    //if not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user')
+                    IF   not(trim(form1.ZQuery2.FieldByName('column_name').asString)='del')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='createdate')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user_first')
+                       and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='createdate_first') then
+                      begin
+                      IF  (not(trim(tek_table)='av_users_arm') and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_user'))
+                          or ((trim(tek_table)='av_users_arm') and not(trim(form1.ZQuery2.FieldByName('column_name').asString)='id_usr')) then
+                        begin
+                        if tocka>0 then form1.ZQuery4.SQL.Add(',');
+                        form1.ZQuery4.SQL.Add('a.'+trim(form1.ZQuery2.FieldByName('column_name').asString));
+                        tocka:=1;
+                        end;
+                      end;
+                   form1.ZQuery2.Next;
+                  end;
+               form1.ZQuery4.SQL.Add(' );');
+
+              //If tek_table='av_spr_ats' then
+
+                //If tek_table='av_shedule_atp' then
+               //showmessage(form1.ZQuery4.SQL.Text);//$
+
+
+           try
+            form1.ZQuery4.open;
+            If form1.ZQuery4.RecordCount>0 then
+               form1.write_log('*** '+inttostr(form1.ZQuery4.RecordCount)+' Дубликатов удалено из таблицы '+tek_table+' !');
+            //showmessage(form1.ZQuery4.SQL.Text);
+           except
+            form1.write_log('- Невозможно удалить дубликаты данных из таблицы '+tek_table+' !');
+            form1.write_log('!!!15 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+                  application.ProcessMessages;
+            form1.ZConnection1.Disconnect;
+            form1.ZConnection2.Disconnect;
+            Result:=1;
+            exit;
+           end;
+        end;
+            form1.Memo1.Lines.add('*** '+inttostr(form1.ZQuery4.RecordCount)+' Дубликатов удалено из таблицы '+tek_table+' !');
+                  application.ProcessMessages;
+          form1.ZQuery3.Next;
+       end;
+
+      //=========================================================================
+     //-------------------------- Завершение транзакции
+       form1.Zconnection2.Commit;
+    except
+       form1.ZConnection2.Rollback;
+       form1.write_log('!!!16 ОСТАНОВКА   Незавершенная транзакция ');
+       form1.ZConnection2.Rollback;
+       Result:=1;
+       exit;
+     end;
+
+
+  end; //#
+
+
+  form1.ZConnection1.Disconnect;
+  form1.ZConnection2.Disconnect;
+  Result:=0;
+
+end;
+
+
+//************************************************************************************************************
+//************************************** Расчет локального списка расписаний *********************************
+//************************************************************************************************************
+function Sync_local_shedule():byte;
+ var
+   tekflag:byte=0;
+begin
+   Result:=0;
+  form1.write_log('=============================Sync_local_shedule====================================');
+  // ================Проверяем доступность серверов======================
+  form1.write_log('++2+ Определение доступности Локального сервера');
+
+  // Подключаемся к локальному серверу
+  If not(Connect2(form1.Zconnection2, 2)) then
+    begin
+      form1.write_log('- Локальный сервер:  - НЕТ СОЕДИНЕНИЯ');
+      tekflag:=1;
+    end;
+
+  if tekflag=1 then
+    begin
+     form1.write_log('!!!17 ОСТАНОВКА    НЕТ СОЕДИНЕНИЯ C СЕРВЕРАМИ');
+     //form1.ZConnection1.Disconnect;
+     form1.ZConnection2.Disconnect;
+     Result:=1;
+     exit;
+    end;
+
+  //--------------------------Создаем или перезаписываем таблицу AV_LIST_SHEDULE
+  // Определяем текущий ID остановочного пункта сервера для текущей локальной системы и расчитываем список локальных отрезков
+  //connectini[14];
+
+  //If 1<>1 then //#
+  //begin
+
+ //======================Открываем транзакцию
+   try
+    If not form1.Zconnection2.InTransaction then
+       begin
+          form1.Zconnection2.StartTransaction;
+       end
+    else
+       begin
+          form1.write_log('!!!18 ОСТАНОВКА   Незавершенная транзакция ');
+          form1.ZConnection2.Rollback;
+          Result:=1;
+          exit;
+       end;
+//// Удаялем таблицу в транзакции
+form1.ZQuery2.SQL.Clear;
+//form1.ZQuery2.SQL.add('DROP TABLE IF EXISTS av_trip;');
+//form1.ZQuery2.SQL.add('DROP TABLE IF EXISTS av_trip_atp_ats;');
+//form1.ZQuery2.SQL.add('DROP TABLE IF EXISTS av_trip_dog_lic;');
+
+
+form1.ZQuery2.SQL.add('DELETE from av_trip where id_point_server='+connectini[14]+' or id_point_server=0;');
+//if (flag_real=true) then showmessage('(virt_flag_real=true)') else showmessage('(virt_flag_real=false)');
+//if (do_flag=true) then showmessage('(virt_flag=true)') else showmessage('(virt_flag=false)');
+
+
+if (flag_real=true) then
+  begin
+    form1.ZQuery2.SQL.add('DELETE from av_trip_atp_ats;');
+    form1.ZQuery2.SQL.add('DELETE from av_trip_dog_lic;');
+    //showmessage('4444');
+  end;
+
+if not flag_real and not virt_sync_data  then
+      begin
+        form1.ZQuery2.SQL.add('DELETE from av_trip_atp_ats;');
+        form1.ZQuery2.SQL.add('DELETE from av_trip_dog_lic;');
+        //showmessage('55555');
+        form1.write_log('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@');
+      end;
+//form1.write_log(form1.ZQuery2.SQL.Text);//
+
+
+try
+ //showmessage(form1.ZQuery2.SQL.Text);
+ form1.ZQuery2.open;//%
+except
+  form1.write_log('- Таблица с предыдущим локальным списком отрезков расписаний не очищена на локальном сервере !');
+  form1.write_log('!!!19 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СОЗДАНИЯ СПИСКА ЛОКАЛЬНЫХ ОТРЕЗКОВ РАСПИСАНИЙ НЕВОЗМОЖНО ');
+  form1.write_log(form1.ZQuery2.SQL.Text);
+  form1.ZConnection2.Rollback;
+  //form1.ZConnection1.Disconnect;
+  form1.ZConnection2.Disconnect;
+  Result:=1;
+  exit;
+end;
+   form1.Zconnection2.Commit;
+except
+   form1.ZConnection2.Rollback;
+   form1.write_log('!!!20 ОСТАНОВКА   Незавершенная транзакция ');
+   form1.ZConnection2.Rollback;
+   Result:=1;
+   exit;
+end;
+
+   //end;//#
+
+//======================Открываем транзакцию
+  try
+   If not form1.Zconnection2.InTransaction then
+      begin
+         form1.Zconnection2.StartTransaction;
+      end
+   else
+      begin
+         form1.write_log('!!!21 ОСТАНОВКА   Незавершенная транзакция ');
+         form1.ZConnection2.Rollback;
+         Result:=1;
+         exit;
+      end;
+
+ //If 1<>1 then //#
+  //begin
+//********************************** Заполняем данными таблицу av_trip**********************************
+form1.write_log('- создаем данные по рейсам [ТРАНЗИТ ОТПРАВЛЕНИЕ]');
+form1.ZQuery2.SQL.Clear;
+// ---------------------------------- ТРАНЗИТ ОТПРАВЛЕНИЕ-------------------------------------------------
+form1.ZQuery2.SQL.Add(' insert into av_trip ');
+//-----                           Отрезки из состава для Зеленокумск АС id=77 по расписаниям транзит');
+form1.ZQuery2.SQL.Add('select *,                                                               ');
+form1.ZQuery2.SQL.Add('      CASE WHEN h.ot_id_point = '+trim(connectini[14])+'                                         ');
+form1.ZQuery2.SQL.Add('           THEN 1                                                             ');
+form1.ZQuery2.SQL.Add('           WHEN h.do_id_point = '+trim(connectini[14])+'                                              ');
+form1.ZQuery2.SQL.Add('           THEN 2                                                                   ');
+form1.ZQuery2.SQL.Add('           WHEN (h.ot_id_point<>'+trim(connectini[14])+' and h.do_id_point<>'+trim(connectini[14])+')                              ');
+form1.ZQuery2.SQL.Add('           THEN 1                                                                         ');
+form1.ZQuery2.SQL.Add('           END AS napr,                                                                       ');
+form1.ZQuery2.SQL.Add(            trim(connectini[14])+' as id_point_server                                                                        ');
+form1.ZQuery2.SQL.Add('    from                                                                                        ');
+form1.ZQuery2.SQL.Add('    (select a.id_shedule,                                                                          ');
+form1.ZQuery2.SQL.Add('           a.plat_o as plat,                   ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------    ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------       ');
+form1.ZQuery2.SQL.Add('  (select n.active from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as active,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dateactive from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dateactive,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dates from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dates,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('  (select n.datepo from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as datepo,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                  ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                  ');
+// ----- Код остановочного пункта ОТ (j)               ');
+form1.ZQuery2.SQL.Add('       (select j.id_point                            ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav j                      ');
+form1.ZQuery2.SQL.Add('           where                                           ');
+form1.ZQuery2.SQL.Add('               (j.del=0) and                                  ');
+form1.ZQuery2.SQL.Add('               j.id_shedule=a.id_shedule and                     ');
+form1.ZQuery2.SQL.Add('               j.form=1 and                                         ');
+form1.ZQuery2.SQL.Add('               j.point_order<a.point_order                             ');
+form1.ZQuery2.SQL.Add('               order by j.point_order DESC limit 1                         ');
+form1.ZQuery2.SQL.Add('               )                                                             ');
+form1.ZQuery2.SQL.Add('          as ot_id_point,                                                       ');
+// -----------------------------------------------------                                ');
+// ----- № по порядку остановочного пункта ОТ (k)                                          ');
+form1.ZQuery2.SQL.Add('       (select k.point_order                                                             ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav k                                                          ');
+form1.ZQuery2.SQL.Add('           where                                                                               ');
+form1.ZQuery2.SQL.Add('               (k.del=0) and                                                                      ');
+form1.ZQuery2.SQL.Add('               k.id_shedule=a.id_shedule and                                                         ');
+form1.ZQuery2.SQL.Add('               k.form=1 and                          ');
+form1.ZQuery2.SQL.Add('               k.point_order<a.point_order              ');
+form1.ZQuery2.SQL.Add('               order by k.point_order DESC limit 1          ');
+form1.ZQuery2.SQL.Add('               )                                              ');
+form1.ZQuery2.SQL.Add('          as ot_order,                                           ');
+// -----------------------------------------------------                 ');
+// ----- Наименование остановочного пункта ОТ (l)                           ');
+form1.ZQuery2.SQL.Add('       (select l.name                                                     ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav l                                           ');
+form1.ZQuery2.SQL.Add('           where                                                                ');
+form1.ZQuery2.SQL.Add('               (l.del=0) and                                                       ');
+form1.ZQuery2.SQL.Add('               l.id_shedule=a.id_shedule and                                          ');
+form1.ZQuery2.SQL.Add('               l.form=1 and                                                              ');
+form1.ZQuery2.SQL.Add('               l.point_order<a.point_order                                                  ');
+form1.ZQuery2.SQL.Add('               order by l.point_order DESC limit 1                                              ');
+form1.ZQuery2.SQL.Add('               )                                                                                  ');
+form1.ZQuery2.SQL.Add('          as ot_name,                                                                                ');
+// ----- Код остановочного пункта ДО (b)  ');
+form1.ZQuery2.SQL.Add('       (select b.id_point               ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav b         ');
+form1.ZQuery2.SQL.Add('           where                              ');
+form1.ZQuery2.SQL.Add('               (b.del=0) and                     ');
+form1.ZQuery2.SQL.Add('               b.id_shedule=a.id_shedule and        ');
+form1.ZQuery2.SQL.Add('               b.form=1 and                            ');
+form1.ZQuery2.SQL.Add('               b.point_order>a.point_order                ');
+form1.ZQuery2.SQL.Add('               order by b.point_order ASC limit 1            ');
+form1.ZQuery2.SQL.Add('               )                                                ');
+form1.ZQuery2.SQL.Add('          as do_id_point,                                          ');
+// -----------------------------------------------------                   ');
+// ----- № по порядку остановочного пункта ДО (c)                             ');
+form1.ZQuery2.SQL.Add('       (select c.point_order                                                ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav c                                             ');
+form1.ZQuery2.SQL.Add('           where                                                                  ');
+form1.ZQuery2.SQL.Add('               (c.del=0) and                                                         ');
+form1.ZQuery2.SQL.Add('               c.id_shedule=a.id_shedule and                                            ');
+form1.ZQuery2.SQL.Add('               c.form=1 and                                                                ');
+form1.ZQuery2.SQL.Add('               c.point_order>a.point_order                                                    ');
+form1.ZQuery2.SQL.Add('               order by c.point_order ASC limit 1                                                ');
+form1.ZQuery2.SQL.Add('               )                                                                                    ');
+form1.ZQuery2.SQL.Add('          as do_order,                                                                                 ');
+// -----------------------------------------------------    ');
+// ----- Наименование остановочного пункта ДО (d)              ');
+form1.ZQuery2.SQL.Add('       (select d.name                                        ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav d                              ');
+form1.ZQuery2.SQL.Add('           where                                                   ');
+form1.ZQuery2.SQL.Add('               (d.del=0) and                                          ');
+form1.ZQuery2.SQL.Add('               d.id_shedule=a.id_shedule and                             ');
+form1.ZQuery2.SQL.Add('               d.form=1 and                                                 ');
+form1.ZQuery2.SQL.Add('               d.point_order>a.point_order                                     ');
+form1.ZQuery2.SQL.Add('               order by d.point_order ASC limit 1                                 ');
+form1.ZQuery2.SQL.Add('               )                                                                     ');
+form1.ZQuery2.SQL.Add('          as do_name,                                                                   ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                         ');
+form1.ZQuery2.SQL.Add('          a.form,                                                                             ');
+form1.ZQuery2.SQL.Add('          a.t_o,                                                                                 ');
+form1.ZQuery2.SQL.Add('          a.t_s,                                                                                    ');
+form1.ZQuery2.SQL.Add('          a.t_p,                                                                                       ');
+form1.ZQuery2.SQL.add('          a.t_d,                 ');
+//-----                           Zakaz из av_shedule (g)                                                                                   ');
+form1.ZQuery2.SQL.Add('       (select zakaz  ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('          ) as zakaz,                                ');
+//-----                           Date_tarif из av_shedule (h)                             ');
+form1.ZQuery2.SQL.Add('       (select date_tarif                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('         ) as date_tarif,                                                         ');
+//-----                           Date_tarif из av_shedule (o)                                                           ');
+form1.ZQuery2.SQL.Add('       (select id_route                                                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('        ) as id_route                                                                                            ');
+//-----                             into av_trip   ');
+form1.ZQuery2.SQL.Add('   from av_shedule_sostav a    ');
+form1.ZQuery2.SQL.Add('   where                          ');
+form1.ZQuery2.SQL.Add('         (a.del=0) and               ');
+form1.ZQuery2.SQL.Add('         a.id_shedule IN                ');
+form1.ZQuery2.SQL.Add('         (select z.id                      ');
+form1.ZQuery2.SQL.Add('          from av_shedule z                   ');
+form1.ZQuery2.SQL.Add('          where                                  ');
+form1.ZQuery2.SQL.Add('                z.del=0 and                         ');
+form1.ZQuery2.SQL.Add('                z.datepo>=current_date                ');
+//form1.ZQuery2.SQL.Add('                z.dates<=current_date and              ');
+//form1.ZQuery2.SQL.Add('                z.datepo>=current_date and                ');
+//form1.ZQuery2.SQL.Add('                z.active=1 and                               ');
+//form1.ZQuery2.SQL.Add('                z.dateactive<=current_date                      ');
+form1.ZQuery2.SQL.Add('         )                                                         ');
+//-----добавлено 26,04,2019 -----------
+//form1.ZQuery2.SQL.Add('         and a.id_shedule NOT IN (select z.id_shedule from av_shedule_invisible z Where z.del=0)');
+
+form1.ZQuery2.SQL.Add('         and                                                          ');
+form1.ZQuery2.SQL.Add('         a.point_order not in                                            ');
+form1.ZQuery2.SQL.Add('         (select max(l.point_order)                                         ');
+form1.ZQuery2.SQL.Add('         from av_shedule_sostav l                                              ');
+form1.ZQuery2.SQL.Add('         where                                                                    ');
+form1.ZQuery2.SQL.Add('         l.del=0 and                                                                 ');
+form1.ZQuery2.SQL.Add('         l.id_shedule=a.id_shedule)                                                     ');
+form1.ZQuery2.SQL.Add('          and                                                                              ');
+form1.ZQuery2.SQL.Add('         a.id_point='+trim(connectini[14])+' and a.form=0) h                                                                     ');
+form1.ZQuery2.SQL.Add(' where            ');
+form1.ZQuery2.SQL.Add('h.ot_id_point>0 and h.ot_id_point<>h.do_id_point');
+form1.ZQuery2.SQL.Add('     order by h.id_shedule;                                                                                  ');
+//showmessage(form1.ZQuery2.SQL.Text);
+
+//form1.write_log(form1.ZQuery2.SQL.Text);//$
+
+// ---------------------------------- ТРАНЗИТ ПРИБЫТИЕ-------------------------------------------------
+form1.write_log('- создаем данные по рейсам [ТРАНЗИТ ПРИБЫТИЕ]');
+
+form1.ZQuery2.SQL.Add(' insert into av_trip ');
+//-----                           Отрезки из состава для Зеленокумск АС id=77 по расписаниям транзит');
+form1.ZQuery2.SQL.Add('select *,                                                               ');
+form1.ZQuery2.SQL.Add('      CASE WHEN h.ot_id_point = '+trim(connectini[14])+'                                         ');
+form1.ZQuery2.SQL.Add('           THEN 1                                                             ');
+form1.ZQuery2.SQL.Add('           WHEN h.do_id_point = '+trim(connectini[14])+'                                              ');
+form1.ZQuery2.SQL.Add('           THEN 2                                                                   ');
+form1.ZQuery2.SQL.Add('           WHEN (h.ot_id_point<>'+trim(connectini[14])+' and h.do_id_point<>'+trim(connectini[14])+')                              ');
+form1.ZQuery2.SQL.Add('           THEN 2                                                                         ');
+form1.ZQuery2.SQL.Add('           END AS napr,                                                                       ');
+form1.ZQuery2.SQL.Add(            trim(connectini[14])+' as id_point_server                                                                        ');
+form1.ZQuery2.SQL.Add('    from                                                                                        ');
+form1.ZQuery2.SQL.Add('    (select a.id_shedule,                                                                          ');
+form1.ZQuery2.SQL.Add('           a.plat_o as plat,                   ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------    ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------       ');
+form1.ZQuery2.SQL.Add('  (select n.active from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as active,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dateactive from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dateactive,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dates from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dates,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('  (select n.datepo from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as datepo,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                  ');
+// ----- Код остановочного пункта ОТ (j)               ');
+form1.ZQuery2.SQL.Add('       (select j.id_point                            ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav j                      ');
+form1.ZQuery2.SQL.Add('           where                                           ');
+form1.ZQuery2.SQL.Add('               (j.del=0) and                                  ');
+form1.ZQuery2.SQL.Add('               j.id_shedule=a.id_shedule and                     ');
+form1.ZQuery2.SQL.Add('               j.form=1 and                                         ');
+form1.ZQuery2.SQL.Add('               j.point_order<a.point_order                             ');
+form1.ZQuery2.SQL.Add('               order by j.point_order DESC limit 1                         ');
+form1.ZQuery2.SQL.Add('               )                                                             ');
+form1.ZQuery2.SQL.Add('          as ot_id_point,                                                       ');
+// -----------------------------------------------------                                ');
+// ----- № по порядку остановочного пункта ОТ (k)                                          ');
+form1.ZQuery2.SQL.Add('       (select k.point_order                                                             ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav k                                                          ');
+form1.ZQuery2.SQL.Add('           where                                                                               ');
+form1.ZQuery2.SQL.Add('               (k.del=0) and                                                                      ');
+form1.ZQuery2.SQL.Add('               k.id_shedule=a.id_shedule and                                                         ');
+form1.ZQuery2.SQL.Add('               k.form=1 and                          ');
+form1.ZQuery2.SQL.Add('               k.point_order<a.point_order              ');
+form1.ZQuery2.SQL.Add('               order by k.point_order DESC limit 1          ');
+form1.ZQuery2.SQL.Add('               )                                              ');
+form1.ZQuery2.SQL.Add('          as ot_order,                                           ');
+// -----------------------------------------------------                 ');
+// ----- Наименование остановочного пункта ОТ (l)                           ');
+form1.ZQuery2.SQL.Add('       (select l.name                                                     ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav l                                           ');
+form1.ZQuery2.SQL.Add('           where                                                                ');
+form1.ZQuery2.SQL.Add('               (l.del=0) and                                                       ');
+form1.ZQuery2.SQL.Add('               l.id_shedule=a.id_shedule and                                          ');
+form1.ZQuery2.SQL.Add('               l.form=1 and                                                              ');
+form1.ZQuery2.SQL.Add('               l.point_order<a.point_order                                                  ');
+form1.ZQuery2.SQL.Add('               order by l.point_order DESC limit 1                                              ');
+form1.ZQuery2.SQL.Add('               )                                                                                  ');
+form1.ZQuery2.SQL.Add('          as ot_name,                                                                                ');
+// ----- Код остановочного пункта ДО (b)  ');
+form1.ZQuery2.SQL.Add('       (select b.id_point               ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav b         ');
+form1.ZQuery2.SQL.Add('           where                              ');
+form1.ZQuery2.SQL.Add('               (b.del=0) and                     ');
+form1.ZQuery2.SQL.Add('               b.id_shedule=a.id_shedule and        ');
+form1.ZQuery2.SQL.Add('               b.form=1 and                            ');
+form1.ZQuery2.SQL.Add('               b.point_order>a.point_order                ');
+form1.ZQuery2.SQL.Add('               order by b.point_order ASC limit 1            ');
+form1.ZQuery2.SQL.Add('               )                                                ');
+form1.ZQuery2.SQL.Add('          as do_id_point,                                          ');
+// -----------------------------------------------------                   ');
+// ----- № по порядку остановочного пункта ДО (c)                             ');
+form1.ZQuery2.SQL.Add('       (select c.point_order                                                ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav c                                             ');
+form1.ZQuery2.SQL.Add('           where                                                                  ');
+form1.ZQuery2.SQL.Add('               (c.del=0) and                                                         ');
+form1.ZQuery2.SQL.Add('               c.id_shedule=a.id_shedule and                                            ');
+form1.ZQuery2.SQL.Add('               c.form=1 and                                                                ');
+form1.ZQuery2.SQL.Add('               c.point_order>a.point_order                                                    ');
+form1.ZQuery2.SQL.Add('               order by c.point_order ASC limit 1                                                ');
+form1.ZQuery2.SQL.Add('               )                                                                                    ');
+form1.ZQuery2.SQL.Add('          as do_order,                                                                                 ');
+// -----------------------------------------------------    ');
+// ----- Наименование остановочного пункта ДО (d)              ');
+form1.ZQuery2.SQL.Add('       (select d.name                                        ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav d                              ');
+form1.ZQuery2.SQL.Add('           where                                                   ');
+form1.ZQuery2.SQL.Add('               (d.del=0) and                                          ');
+form1.ZQuery2.SQL.Add('               d.id_shedule=a.id_shedule and                             ');
+form1.ZQuery2.SQL.Add('               d.form=1 and                                                 ');
+form1.ZQuery2.SQL.Add('               d.point_order>a.point_order                                     ');
+form1.ZQuery2.SQL.Add('               order by d.point_order ASC limit 1                                 ');
+form1.ZQuery2.SQL.Add('               )                                                                     ');
+form1.ZQuery2.SQL.Add('          as do_name,                                                                   ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                         ');
+form1.ZQuery2.SQL.Add('          a.form,                                                                             ');
+form1.ZQuery2.SQL.Add('          a.t_o,                                                                                 ');
+form1.ZQuery2.SQL.Add('          a.t_s,                                                                                    ');
+form1.ZQuery2.SQL.Add('          a.t_p,                                                                                       ');
+form1.ZQuery2.SQL.Add('          a.t_d,                                                                                       ');
+//-----                           Zakaz из av_shedule (g)                                                                                   ');
+form1.ZQuery2.SQL.Add('       (select zakaz  ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('          ) as zakaz,                                ');
+//-----                           Date_tarif из av_shedule (h)                             ');
+form1.ZQuery2.SQL.Add('       (select date_tarif                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('         ) as date_tarif,                                                         ');
+//-----                           Date_tarif из av_shedule (o)                                                           ');
+form1.ZQuery2.SQL.Add('       (select id_route                                                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('        ) as id_route                                                                                            ');
+//-----                             into av_trip   ');
+form1.ZQuery2.SQL.Add('   from av_shedule_sostav a    ');
+form1.ZQuery2.SQL.Add('   where                          ');
+form1.ZQuery2.SQL.Add('         (a.del=0) and               ');
+form1.ZQuery2.SQL.Add('         a.id_shedule IN                ');
+form1.ZQuery2.SQL.Add('         (select z.id                      ');
+form1.ZQuery2.SQL.Add('          from av_shedule z                   ');
+form1.ZQuery2.SQL.Add('          where                                  ');
+form1.ZQuery2.SQL.Add('                z.del=0 and                         ');
+form1.ZQuery2.SQL.Add('                z.datepo>=current_date                ');
+//form1.ZQuery2.SQL.Add('                z.dates<=current_date and              ');
+//form1.ZQuery2.SQL.Add('                z.datepo>=current_date and                ');
+//form1.ZQuery2.SQL.Add('                z.active=1 and                               ');
+//form1.ZQuery2.SQL.Add('                z.dateactive<=current_date                      ');
+form1.ZQuery2.SQL.Add('         )                                                         ');
+
+//-----добавлено 26,04,2019 -----------
+//form1.ZQuery2.SQL.Add('         and a.id_shedule NOT IN (select z.id_shedule from av_shedule_invisible z Where z.del=0)  ');
+
+form1.ZQuery2.SQL.Add('         and                                                          ');
+form1.ZQuery2.SQL.Add('         a.point_order not in                                            ');
+form1.ZQuery2.SQL.Add('         (select max(l.point_order)                                         ');
+form1.ZQuery2.SQL.Add('         from av_shedule_sostav l                                              ');
+form1.ZQuery2.SQL.Add('         where                                                                    ');
+form1.ZQuery2.SQL.Add('         l.del=0 and                                                                 ');
+form1.ZQuery2.SQL.Add('         l.id_shedule=a.id_shedule)                                                     ');
+form1.ZQuery2.SQL.Add('          and                                                                              ');
+form1.ZQuery2.SQL.Add('         a.id_point='+trim(connectini[14])+' and a.form=0) h                                                                     ');
+form1.ZQuery2.SQL.Add(' where            ');
+form1.ZQuery2.SQL.Add('h.ot_id_point>0 and h.ot_id_point<>h.do_id_point');
+form1.ZQuery2.SQL.Add('     order by h.id_shedule;                                                                                  ');
+
+
+//form1.write_log(form1.ZQuery2.SQL.Text);//$
+  //form1.ZQuery2.SQL.Clear;//$
+
+//showmessage(form1.ZQuery2.SQL.Text);
+// ---------------------------------- ОТПРАВЛЕНИЯ ЕСЛИ Я ФОРМИРУЮЩИЙСЯ -------------------------------------------------
+form1.write_log('- создаем данные по рейсам [ФОРМИРУЮЩИЕСЯ ОТПРАВЛЕНИЯ]');
+
+form1.ZQuery2.SQL.Add(' insert into av_trip ');
+//-----                           Отрезки из состава для Зеленокумск АС id=77 по расписаниям отправление');
+form1.ZQuery2.SQL.Add('select *,                                                                   ');
+form1.ZQuery2.SQL.Add('      CASE WHEN h.ot_id_point = '+trim(connectini[14]));
+form1.ZQuery2.SQL.Add('           THEN 1                                                                 ');
+form1.ZQuery2.SQL.Add('           WHEN h.do_id_point = '+trim(connectini[14]));
+form1.ZQuery2.SQL.Add('           THEN 2                                                                       ');
+form1.ZQuery2.SQL.Add('           WHEN (h.ot_id_point<>'+trim(connectini[14])+' and h.do_id_point<>'+trim(connectini[14])+')');
+form1.ZQuery2.SQL.Add('           THEN 1     ');
+form1.ZQuery2.SQL.Add('           END AS napr,                                                                       ');
+form1.ZQuery2.SQL.Add(            trim(connectini[14])+' as id_point_server                                                                        ');
+form1.ZQuery2.SQL.Add('    from                    ');
+form1.ZQuery2.SQL.Add('    (select a.id_shedule,      ');
+form1.ZQuery2.SQL.Add('           a.plat_o as plat,      ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------       ');
+form1.ZQuery2.SQL.Add('  (select n.active from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as active,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dateactive from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dateactive,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dates from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dates,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('  (select n.datepo from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as datepo,');
+// ----- Код остановочного пункта ОТ (j)  ');
+form1.ZQuery2.SQL.Add('       (select j.id_point               ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav j         ');
+form1.ZQuery2.SQL.Add('           where                              ');
+form1.ZQuery2.SQL.Add('               (j.del=0) and                     ');
+form1.ZQuery2.SQL.Add('               j.id_shedule=a.id_shedule and        ');
+form1.ZQuery2.SQL.Add('               j.form=1 and                            ');
+form1.ZQuery2.SQL.Add('               j.point_order=a.point_order                ');
+form1.ZQuery2.SQL.Add('               order by j.point_order ASC limit 1         ');
+form1.ZQuery2.SQL.Add('               )                                             ');
+form1.ZQuery2.SQL.Add('          as ot_id_point,                                       ');
+// ----- № по порядку остановочного пункта ОТ (k)                          ');
+form1.ZQuery2.SQL.Add('       (select k.point_order                                             ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav k                                          ');
+form1.ZQuery2.SQL.Add('           where                                                               ');
+form1.ZQuery2.SQL.Add('               (k.del=0) and                                                      ');
+form1.ZQuery2.SQL.Add('               k.id_shedule=a.id_shedule and                                         ');
+form1.ZQuery2.SQL.Add('               k.form=1 and                                                             ');
+form1.ZQuery2.SQL.Add('               k.point_order=a.point_order                                                 ');
+form1.ZQuery2.SQL.Add('               order by k.point_order ASC limit 1         ');
+form1.ZQuery2.SQL.Add('               )                                                                              ');
+form1.ZQuery2.SQL.Add('          as ot_order,                                                                           ');
+// ----- Наименование остановочного пункта ОТ (l)                                                           ');
+form1.ZQuery2.SQL.Add('       (select l.name                                                                                     ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav l  ');
+form1.ZQuery2.SQL.Add('           where                       ');
+form1.ZQuery2.SQL.Add('               (l.del=0) and              ');
+form1.ZQuery2.SQL.Add('               l.id_shedule=a.id_shedule and ');
+form1.ZQuery2.SQL.Add('               l.form=1 and                     ');
+form1.ZQuery2.SQL.Add('               l.point_order=a.point_order         ');
+form1.ZQuery2.SQL.Add('               order by l.point_order ASC limit 1         ');
+form1.ZQuery2.SQL.Add('               )                                      ');
+form1.ZQuery2.SQL.Add('          as ot_name,                                    ');
+// ----- Код остановочного пункта ДО (b)                         ');
+form1.ZQuery2.SQL.Add('       (select b.id_point                                      ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav b                                ');
+form1.ZQuery2.SQL.Add('           where                                                     ');
+form1.ZQuery2.SQL.Add('               (b.del=0) and                                            ');
+form1.ZQuery2.SQL.Add('               b.id_shedule=a.id_shedule and                               ');
+form1.ZQuery2.SQL.Add('               b.form=1 and                                                   ');
+form1.ZQuery2.SQL.Add('               b.point_order>a.point_order                                       ');
+form1.ZQuery2.SQL.Add('               order by b.point_order ASC limit 1                                   ');
+form1.ZQuery2.SQL.Add('               )                                                                       ');
+form1.ZQuery2.SQL.Add('          as do_id_point,                                                                 ');
+//showmessage(form1.ZQuery2.SQL.Text);//$
+//form1.ZQuery2.SQL.Clear;//$
+// ----- № по порядку остановочного пункта ДО (c)                 ');
+form1.ZQuery2.SQL.Add('       (select c.point_order                                    ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav c                                 ');
+form1.ZQuery2.SQL.Add('           where                                                      ');
+form1.ZQuery2.SQL.Add('               (c.del=0) and                                             ');
+form1.ZQuery2.SQL.Add('               c.id_shedule=a.id_shedule and                                ');
+form1.ZQuery2.SQL.Add('               c.form=1 and                                                    ');
+form1.ZQuery2.SQL.Add('               c.point_order>a.point_order                                        ');
+form1.ZQuery2.SQL.Add('               order by c.point_order ASC limit 1                                    ');
+form1.ZQuery2.SQL.Add('               )                                                                        ');
+form1.ZQuery2.SQL.Add('          as do_order,                                                                     ');
+// ----- Наименование остановочного пункта ДО (d)          ');
+form1.ZQuery2.SQL.Add('       (select d.name                                    ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav d                          ');
+form1.ZQuery2.SQL.Add('           where                                               ');
+form1.ZQuery2.SQL.Add('               (d.del=0) and                                      ');
+form1.ZQuery2.SQL.Add('               d.id_shedule=a.id_shedule and                         ');
+form1.ZQuery2.SQL.Add('               d.form=1 and                                             ');
+form1.ZQuery2.SQL.Add('               d.point_order>a.point_order                                 ');
+form1.ZQuery2.SQL.Add('               order by d.point_order ASC limit 1                             ');
+form1.ZQuery2.SQL.Add('               )                                                                 ');
+form1.ZQuery2.SQL.Add('          as do_name,                                                               ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                     ');
+form1.ZQuery2.SQL.Add('          a.form,                                                                         ');
+form1.ZQuery2.SQL.Add('          a.t_o,   ');
+form1.ZQuery2.SQL.Add('          a.t_s,      ');
+form1.ZQuery2.SQL.Add('          a.t_p,         ');
+form1.ZQuery2.SQL.Add('          a.t_d,         ');
+//-----                           Zakaz из av_shedule (g)                                                                                   ');
+form1.ZQuery2.SQL.Add('       (select zakaz  ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('          ) as zakaz,                                ');
+//-----                           Date_tarif из av_shedule (h)                             ');
+form1.ZQuery2.SQL.Add('       (select date_tarif                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('         ) as date_tarif,                                                         ');
+//-----                           ID_ROUTE из av_shedule (o)                                                           ');
+form1.ZQuery2.SQL.Add('       (select id_route                                                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('        ) as id_route                              ');
+form1.ZQuery2.SQL.Add('   from av_shedule_sostav a                                                            ');
+form1.ZQuery2.SQL.Add('   where                                                                                  ');
+form1.ZQuery2.SQL.Add('         (a.del=0) and                                                                       ');
+form1.ZQuery2.SQL.Add('         a.id_shedule IN          ');
+form1.ZQuery2.SQL.Add('         (select z.id                ');
+form1.ZQuery2.SQL.Add('          from av_shedule z             ');
+form1.ZQuery2.SQL.Add('          where                            ');
+form1.ZQuery2.SQL.Add('                z.del=0 and                   ');
+form1.ZQuery2.SQL.Add('                z.datepo>=current_date           ');
+//form1.ZQuery2.SQL.Add('                z.dates<=current_date and        ');
+//form1.ZQuery2.SQL.Add('                z.datepo>=current_date and          ');
+//form1.ZQuery2.SQL.Add('                z.active=1 and                         ');
+//form1.ZQuery2.SQL.Add('                z.dateactive<=current_date                ');
+form1.ZQuery2.SQL.Add('         )                                                   ');
+//-----добавлено 26,04,2019 -----------
+//form1.ZQuery2.SQL.Add('         and a.id_shedule NOT IN (select z.id_shedule from av_shedule_invisible z Where z.del=0)');
+form1.ZQuery2.SQL.Add('         and                                                    ');
+form1.ZQuery2.SQL.Add('         a.point_order not in                                      ');
+form1.ZQuery2.SQL.Add('         (select max(l.point_order)                                   ');
+form1.ZQuery2.SQL.Add('         from av_shedule_sostav l                                        ');
+form1.ZQuery2.SQL.Add('         where                                                              ');
+form1.ZQuery2.SQL.Add('         l.del=0 and                                                           ');
+form1.ZQuery2.SQL.Add('         l.id_shedule=a.id_shedule)                                               ');
+form1.ZQuery2.SQL.Add('          and                                                                        ');
+form1.ZQuery2.SQL.Add('         (a.id_point='+trim(connectini[14])+' and a.form=1)) h                                         ');
+form1.ZQuery2.SQL.Add('where ');
+form1.ZQuery2.SQL.Add('      h.ot_id_point>0 ');
+form1.ZQuery2.SQL.Add('     order by h.id_shedule;                         ');
+ //showmessage(form1.ZQuery2.SQL.Text);//$
+
+// ---------------------------------- ПРИБЫТИЕ ЕСЛИ Я ФОРМИРУЮЩИЙСЯ -------------------------------------------------
+form1.write_log('- создаем данные по рейсам [ФОРМИРУЮЩИЕСЯ ПРИБЫТИЯ]');
+
+form1.ZQuery2.SQL.Add(' insert into av_trip ');
+//-----                           ! Отрезки из состава для Зеленокумск АС id=77 по расписаниям прибытие ');
+form1.ZQuery2.SQL.Add('select *,                                                                  ');
+form1.ZQuery2.SQL.Add('      CASE WHEN h.ot_id_point = '+trim(connectini[14]));
+form1.ZQuery2.SQL.Add('           THEN 1                                                                  ');
+form1.ZQuery2.SQL.Add('           WHEN h.do_id_point = '+trim(connectini[14]));
+form1.ZQuery2.SQL.Add('           THEN 2                                                                          ');
+form1.ZQuery2.SQL.Add('           WHEN (h.ot_id_point<>'+trim(connectini[14])+' and h.do_id_point<>'+trim(connectini[14])+')');
+form1.ZQuery2.SQL.Add('           THEN 1   ');
+form1.ZQuery2.SQL.Add('           END AS napr,                                                                       ');
+form1.ZQuery2.SQL.Add(            trim(connectini[14])+' as id_point_server                                                                        ');
+form1.ZQuery2.SQL.Add('    from                    ');
+form1.ZQuery2.SQL.Add('    (select a.id_shedule,       ');
+form1.ZQuery2.SQL.Add('           a.plat_o as plat,        ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------       ');
+form1.ZQuery2.SQL.Add('  (select n.active from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as active,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dateactive from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dateactive,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('(select n.dates from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as dates,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------');
+form1.ZQuery2.SQL.Add('  (select n.datepo from av_shedule n where n.del=0 and n.id=a.id_shedule order by n.del asc,n.createdate desc limit 1)');
+form1.ZQuery2.SQL.Add('          as datepo,');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                  ');
+// ----- Код остановочного пункта ОТ (j)     ');
+form1.ZQuery2.SQL.Add('       (select j.id_point                   ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav j              ');
+form1.ZQuery2.SQL.Add('           where                                    ');
+form1.ZQuery2.SQL.Add('               (j.del=0) and                            ');
+form1.ZQuery2.SQL.Add('               j.id_shedule=a.id_shedule and                ');
+form1.ZQuery2.SQL.Add('               j.form=1 and                                     ');
+form1.ZQuery2.SQL.Add('               j.point_order<a.point_order                          ');
+form1.ZQuery2.SQL.Add('               order by j.point_order DESC limit 1                      ');
+form1.ZQuery2.SQL.Add('               )                                                            ');
+form1.ZQuery2.SQL.Add('          as ot_id_point,                                                       ');
+// -----------------------------------------------------                                 ');
+// ----- № по порядку остановочного пункта ОТ (k)                                            ');
+form1.ZQuery2.SQL.Add('       (select k.point_order                                                                ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav k                                                              ');
+form1.ZQuery2.SQL.Add('           where                                                                                    ');
+form1.ZQuery2.SQL.Add('               (k.del=0) and                                                                            ');
+form1.ZQuery2.SQL.Add('               k.id_shedule=a.id_shedule and  ');
+form1.ZQuery2.SQL.Add('               k.form=1 and                       ');
+form1.ZQuery2.SQL.Add('               k.point_order<a.point_order            ');
+form1.ZQuery2.SQL.Add('               order by k.point_order DESC limit 1        ');
+form1.ZQuery2.SQL.Add('               )                                              ');
+form1.ZQuery2.SQL.Add('          as ot_order,                                            ');
+// -----------------------------------------------------                   ');
+// ----- Наименование остановочного пункта ОТ (l)                              ');
+form1.ZQuery2.SQL.Add('       (select l.name                                                         ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav l                                                ');
+form1.ZQuery2.SQL.Add('           where                                                                      ');
+form1.ZQuery2.SQL.Add('               (l.del=0) and                                                              ');
+form1.ZQuery2.SQL.Add('               l.id_shedule=a.id_shedule and                                                  ');
+form1.ZQuery2.SQL.Add('               l.form=1 and                                                                       ');
+form1.ZQuery2.SQL.Add('               l.point_order<a.point_order                                                            ');
+form1.ZQuery2.SQL.Add('               order by l.point_order DESC limit 1                                                        ');
+form1.ZQuery2.SQL.Add('               ) ');
+form1.ZQuery2.SQL.Add('          as ot_name, ');
+// ----- Код остановочного пункта ДО (b) ');
+form1.ZQuery2.SQL.Add('       (select b.id_point               ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav b          ');
+form1.ZQuery2.SQL.Add('           where                                ');
+form1.ZQuery2.SQL.Add('               (b.del=0) and                        ');
+form1.ZQuery2.SQL.Add('               b.id_shedule=a.id_shedule and            ');
+form1.ZQuery2.SQL.Add('               b.form=1 and                                 ');
+form1.ZQuery2.SQL.Add('               b.point_order=a.point_order limit 1                      ');
+form1.ZQuery2.SQL.Add('               )                                                    ');
+form1.ZQuery2.SQL.Add('          as do_id_point,                                               ');
+// -----------------------------------------------------                         ');
+// ----- № по порядку остановочного пункта ДО (c)                                    ');
+form1.ZQuery2.SQL.Add('       (select c.point_order                                                        ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav c                                                      ');
+form1.ZQuery2.SQL.Add('           where                                                                            ');
+form1.ZQuery2.SQL.Add('               (c.del=0) and                                                                    ');
+form1.ZQuery2.SQL.Add('               c.id_shedule=a.id_shedule and                                                        ');
+form1.ZQuery2.SQL.Add('               c.form=1 and                                                                             ');
+form1.ZQuery2.SQL.Add('               c.point_order=a.point_order limit 1                                                                 ');
+form1.ZQuery2.SQL.Add('               ) ');
+form1.ZQuery2.SQL.Add('          as do_order, ');
+// -----------------------------------------------------');
+// ----- Наименование остановочного пункта ДО (d)         ');
+form1.ZQuery2.SQL.Add('       (select d.name                                    ');
+form1.ZQuery2.SQL.Add('          from av_shedule_sostav d                           ');
+form1.ZQuery2.SQL.Add('           where                                                 ');
+form1.ZQuery2.SQL.Add('               (d.del=0) and                                         ');
+form1.ZQuery2.SQL.Add('               d.id_shedule=a.id_shedule and                             ');
+form1.ZQuery2.SQL.Add('               d.form=1 and                                                  ');
+form1.ZQuery2.SQL.Add('               d.point_order=a.point_order  limit 1                                     ');
+form1.ZQuery2.SQL.Add('               )                                                                     ');
+form1.ZQuery2.SQL.Add('          as do_name,                                                                    ');
+//form1.ZQuery2.SQL.Add('--------------------------------------------------                                           ');
+form1.ZQuery2.SQL.Add('          a.form,                                                                                ');
+form1.ZQuery2.SQL.Add('          a.t_o,                                                                                     ');
+form1.ZQuery2.SQL.Add('          a.t_s,                                                                                         ');
+form1.ZQuery2.SQL.Add('          a.t_p,                                                                                             ');
+form1.ZQuery2.SQL.Add('          a.t_d,                                                                                             ');
+//-----                           Zakaz из av_shedule (g)                                                                                   ');
+form1.ZQuery2.SQL.Add('       (select zakaz  ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('          ) as zakaz,                                ');
+//-----                           Date_tarif из av_shedule (h)                             ');
+form1.ZQuery2.SQL.Add('       (select date_tarif                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('         ) as date_tarif,                                                         ');
+//-----                           Date_tarif из av_shedule (o)                                                           ');
+form1.ZQuery2.SQL.Add('       (select id_route                                                           ');
+form1.ZQuery2.SQL.Add('          from av_shedule');
+form1.ZQuery2.SQL.Add('           where del=0 and id=a.id_shedule order by createdate desc limit 1');
+form1.ZQuery2.SQL.Add('        ) as id_route                                                                                            ');
+form1.ZQuery2.SQL.Add('   from av_shedule_sostav a                                                                       ');
+form1.ZQuery2.SQL.Add('   where                                                                                              ');
+form1.ZQuery2.SQL.Add('         (a.del=0) and                                                                                    ');
+form1.ZQuery2.SQL.Add('         a.id_shedule IN                                                                                      ');
+form1.ZQuery2.SQL.Add('         (select z.id                                                                                             ');
+form1.ZQuery2.SQL.Add('          from av_shedule z  ');
+form1.ZQuery2.SQL.Add('          where                  ');
+form1.ZQuery2.SQL.Add('                z.del=0 and          ');
+form1.ZQuery2.SQL.Add('                z.datepo>=current_date    ');
+//form1.ZQuery2.SQL.Add('                z.dates<=current_date and ');
+//form1.ZQuery2.SQL.Add('                z.active=1 and                    ');
+//form1.ZQuery2.SQL.Add('                z.dateactive<=current_date            ');
+form1.ZQuery2.SQL.Add('         )                                                ');
+
+//-----добавлено 26,04,2019 -----------
+//form1.ZQuery2.SQL.Add('         and a.id_shedule NOT IN (select z.id_shedule from av_shedule_invisible z Where z.del=0)  ');
+
+form1.ZQuery2.SQL.Add('                                                           ');
+//form1.ZQuery2.SQL.Add('--!           a.point_order not in                                 ');
+//form1.ZQuery2.SQL.Add('--!           (select max(l.point_order)                               ');
+//form1.ZQuery2.SQL.Add('--!           from av_shedule_sostav l                                     ');
+//form1.ZQuery2.SQL.Add('--!           where                                                            ');
+//form1.ZQuery2.SQL.Add('--!           l.del=0 and                                                          ');
+//form1.ZQuery2.SQL.Add('--!           l.id_shedule=a.id_shedule)                                               ');
+//form1.ZQuery2.SQL.Add('--!            and  ');
+
+form1.ZQuery2.SQL.Add('    and  a.point_order>1                                                                     ');
+form1.ZQuery2.SQL.Add('    and (a.id_point='+trim(connectini[14])+' and a.form=1)) h                                                      ');
+form1.ZQuery2.SQL.Add('where ');
+form1.ZQuery2.SQL.Add('     h.do_id_point>0 and h.ot_id_point>0');
+form1.ZQuery2.SQL.Add('     order by h.id_shedule;                                                                               ');
+
+//form1.write_log(form1.ZQuery2.SQL.Text);//$
+//showmessage(form1.ZQuery2.SQL.Text);
+try
+  form1.ZQuery2.open; //%
+except
+  form1.write_log(form1.ZQuery2.SQL.Text);
+ //showmessage(form1.ZQuery2.SQL.Text);
+ form1.write_log('- Таблица   отрезков расписаний несоздана на локальном сервере !');
+ form1.write_log('!!!22 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СОЗДАНИЯ СПИСКА ЛОКАЛЬНЫХ ОТРЕЗКОВ РАСПИСАНИЙ НЕВОЗМОЖНО ');
+ //form1.ZQuery2.Close;
+ form1.ZConnection2.Rollback;
+ //form1.ZConnection1.Disconnect;
+ form1.ZConnection2.Disconnect;
+ Result:=1;
+ exit;
+end;
+form1.write_log('- Таблица   отрезков расписаний создана на локальном сервере !');
+
+//end;//#
+
+//********************************** Заполняем данными таблицу av_trip_atp_ats**********************************
+//into av_trip_atp_ats
+form1.write_log('- создаем данные по рейсам [ПЕРЕВОЗЧИК + АТС]');
+
+form1.ZQuery2.SQL.Clear;
+form1.ZQuery2.SQL.Add('insert into av_trip_atp_ats ');
+form1.ZQuery2.SQL.Add('select z.*  from ');
+form1.ZQuery2.SQL.Add('(select a.id_shedule,                   ');
+form1.ZQuery2.SQL.Add('        a.id_kontr,                         ');
+form1.ZQuery2.SQL.Add('       (select distinct c.name                         ');
+form1.ZQuery2.SQL.Add('        from av_spr_kontragent c                 ');
+form1.ZQuery2.SQL.Add('        where c.del=0 and c.id=a.id_kontr           ');
+form1.ZQuery2.SQL.Add('       ) as name_kontr,                                ');
+form1.ZQuery2.SQL.Add('        a.def_ats as id_ats,                               ');
+form1.ZQuery2.SQL.Add('       (select  distinct  (trim(b.name)||'+Quotedstr(' ГН: ')+'||trim(b.gos))            ');
+form1.ZQuery2.SQL.Add('       from av_spr_ats b                                        ');
+form1.ZQuery2.SQL.Add('       where b.del=0 and b.id=a.def_ats  limit 1                         ');
+form1.ZQuery2.SQL.Add('       ) as name_ats,                                                  ');
+form1.ZQuery2.SQL.Add('       (select  distinct bh.type_ats            ');
+form1.ZQuery2.SQL.Add('       from av_spr_ats bh                                        ');
+form1.ZQuery2.SQL.Add('       where bh.del=0 and bh.id=a.def_ats   limit 1                         ');
+form1.ZQuery2.SQL.Add('       ) as type_ats,                                                  ');
+form1.ZQuery2.SQL.Add('       -- Количество мест                                       ');
+form1.ZQuery2.SQL.Add('        (select  distinct (bb.m_lay+bb.m_lay_two+bb.m_down+bb.m_down_two)    ');
+form1.ZQuery2.SQL.Add('         from av_spr_ats bb                                           ');
+form1.ZQuery2.SQL.Add('         where bb.del=0 and bb.id=a.def_ats  limit 1                          ');
+form1.ZQuery2.SQL.Add('         ) as all_mest,                                                     ');
+form1.ZQuery2.SQL.Add('       -- Комфортность                                       ');
+form1.ZQuery2.SQL.Add('        (select  distinct (bi.comfort)    ');
+form1.ZQuery2.SQL.Add('         from av_spr_ats bi                                           ');
+form1.ZQuery2.SQL.Add('         where bi.del=0 and bi.id=a.def_ats                              ');
+form1.ZQuery2.SQL.Add('         ) as confort,                                                     ');
+form1.ZQuery2.SQL.Add('         ---------------------------------                                     ');
+form1.ZQuery2.SQL.Add('       (select distinct(f.massezon)                       ');
+form1.ZQuery2.SQL.Add('        from av_shedule_sezon f                 ');
+form1.ZQuery2.SQL.Add('        where f.del=0 and                          ');
+form1.ZQuery2.SQL.Add('              f.id_shedule=a.id_shedule and           ');
+form1.ZQuery2.SQL.Add('              f.id_kontr=a.id_kontr                      ');
+form1.ZQuery2.SQL.Add('       ) as sezon                                     ');
+form1.ZQuery2.SQL.Add('from av_shedule_atp a                                                    ');
+form1.ZQuery2.SQL.Add('where a.del=0 and     ');
+form1.ZQuery2.SQL.Add('      a.def_ats<>0 and                                             ');
+form1.ZQuery2.SQL.Add('      a.id_shedule in (select distinct r.id_shedule from av_shedule_sostav r where r.del=0 and r.id_point='+trim(connectini[14])+')  ');
+form1.ZQuery2.SQL.Add('order by a.id_shedule) z ');
+form1.ZQuery2.SQL.Add('where not trim(z.name_ats)='+quotedstr('')+';');
+
+//form1.write_log(form1.ZQuery2.SQL.Text);
+//form1.Memo1.Text:=form1.Memo1.Text+form1.ZQuery2.SQL.Text;
+ //showmessage(form1.ZQuery2.SQL.Text);//$
+         try
+           form1.ZQuery2.open; //%
+           form1.write_log('- Таблица   ПЕРЕВОЗЧИКОВ для отрезков расписаний создана на локальном сервере !');
+         except
+          form1.write_log(form1.ZQuery2.SQL.Text);
+          form1.write_log('- Таблица   ПЕРЕВОЗЧИКОВ для отрезков расписаний несоздана на локальном сервере !');
+          form1.write_log('!!!23 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СОЗДАНИЯ СПИСКА ЛОКАЛЬНЫХ ОТРЕЗКОВ РАСПИСАНИЙ НЕВОЗМОЖНО ');
+          form1.ZConnection2.Rollback;
+          //form1.ZConnection1.Disconnect;
+          form1.ZConnection2.Disconnect;
+          Result:=1;
+          exit;
+         end;
+
+ //If 1<>1 then //#
+ //begin
+//********************************** Заполняем данными таблицу av_trip_dog_lic**********************************
+//into av_trip_atp_ats
+form1.write_log('- создаем данные по рейсам [ДОГОВОР И ЛИЦЕНЗИЯ ПЕРЕВОЗЧИКА]');
+
+// Проверка что на виртуальном уже обновлены договора и лицензии
+form1.ZQuery2.SQL.Clear;
+form1.ZQuery2.SQL.Add('select * from av_trip_dog_lic;');
+try
+  form1.ZQuery2.open;
+  form1.write_log('- Таблица   ДОГОВОРОВ И ЛИЦЕНЗИЙ ПЕРЕВОЗЧИКОВ проверена локальном сервере !');
+except
+ form1.Memo1.lines.Add(form1.ZQuery2.SQL.Text);
+ form1.write_log('- Таблица   ДОГОВОРОВ И ЛИЦЕНЗИЙ ПЕРЕВОЗЧИКОВ  несоздана на локальном сервере !');
+ form1.write_log('!!!24 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СОЗДАНИЯ СПИСКА ДОГОВОРОВ И ЛИЦЕНЗИЙ ПЕРЕВОЗЧИКОВ НЕВОЗМОЖНО ');
+ form1.ZConnection2.Rollback;
+ //form1.ZConnection1.Disconnect;
+ form1.ZConnection2.Disconnect;
+ Result:=1;
+ exit;
+end;
+
+//if (flag_real=true) then showmessage(form1.ZQuery2.FieldByName('drt').asString);
+ //if ((flag_real=true) and (do_flag=true)) or (flag_real=false) then
+  //begin
+  form1.ZQuery2.SQL.Clear;
+  //-----                           Договора                  ');
+  form1.ZQuery2.SQL.Add('insert into av_trip_dog_lic ');
+  form1.ZQuery2.SQL.Add('select b.id_kontr,             ');
+  form1.ZQuery2.SQL.Add('       b.datazak as dates,        ');
+  form1.ZQuery2.SQL.Add('       case when (b.datapog is null) or (b.datapog < '+quotedstr('01.01.1900')+') then b.datazak else b.datapog end as datepo,        ');
+  //form1.ZQuery2.SQL.Add('       b.datapog as datepo,          ');
+  form1.ZQuery2.SQL.Add('       1 as type_date                   ');
+  form1.ZQuery2.SQL.Add('from av_spr_kontr_dog b                    ');
+  form1.ZQuery2.SQL.Add('where                                         ');
+  form1.ZQuery2.SQL.Add('  b.del=0 and                                    ');
+  form1.ZQuery2.SQL.Add('  substr(trim(b.viddog),length(trim(b.viddog)),1)='+Quotedstr('2')+' and                        ');
+  form1.ZQuery2.SQL.Add('  b.id_kontr in                                        ');
+  form1.ZQuery2.SQL.Add('  (select distinct(a.id_kontr) from av_trip_atp_ats a     ');
+  form1.ZQuery2.SQL.Add('  );                                                         ');
+  // showmessage(form1.ZQuery2.SQL.Text);
+  //-----                           Лицензии                    ');
+  form1.ZQuery2.SQL.Add('insert into av_trip_dog_lic ');
+  form1.ZQuery2.SQL.Add('select c.id_kontr,              ');
+form1.ZQuery2.SQL.Add('       c.datanach as dates,      ');
+form1.ZQuery2.SQL.Add('       case when (c.dataok is null) or (c.dataok < '+quotedstr('01.01.1900')+') then '+quotedstr('01.10.2100')+' else c.dataok end as datepo,        ');
+form1.ZQuery2.SQL.Add('       2 as type_date                ');
+form1.ZQuery2.SQL.Add('from av_spr_kontr_license c                ');
+form1.ZQuery2.SQL.Add('where                                         ');
+form1.ZQuery2.SQL.Add('  c.del=0 and                                    ');
+form1.ZQuery2.SQL.Add('  c.id_kontr in                                     ');
+form1.ZQuery2.SQL.Add('  (select distinct(a.id_kontr) from av_trip_atp_ats a  ');
+form1.ZQuery2.SQL.Add('  );                                                      ');
+
+//end;//#
+
+try
+  //showmessage(form1.ZQuery2.SQL.Text);
+  form1.ZQuery2.open;//%
+  form1.write_log('- Таблица   ДОГОВОРОВ И ЛИЦЕНЗИЙ ПЕРЕВОЗЧИКОВ создана на локальном сервере !');
+
+except
+ form1.Memo1.lines.Add(form1.ZQuery2.SQL.Text);
+ form1.write_log('- Таблица  ДОГОВОРОВ И ЛИЦЕНЗИЙ ПЕРЕВОЗЧИКОВ  несоздана на локальном сервере !');
+ form1.write_log('!!!25 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СОЗДАНИЯ СПИСКА ДОГОВОРОВ И ЛИЦЕНЗИЙ ПЕРЕВОЗЧИКОВ НЕВОЗМОЖНО !');
+ form1.ZConnection2.Rollback;
+ //form1.ZConnection1.Disconnect;
+ form1.ZConnection2.Disconnect;
+ Result:=1;
+ exit;
+end;
+//end;
+
+
+ //
+  //-------------------------- Завершение транзакции
+  form1.Zconnection2.Commit;
+except
+   form1.ZConnection2.Rollback;
+   form1.write_log('!!!26 ОСТАНОВКА   Незавершенная транзакция ');
+   form1.ZConnection2.Rollback;
+   Result:=1;
+   exit;
+end;
+
+  //form1.ZConnection1.Disconnect;
+  form1.ZConnection2.Disconnect;
+
+end;
+
+// Делаем выборки и копируем если нужно данные с центрального сервера на локальный
+function copy_data_sync():boolean;
+var
+  n,k:integer;
+  max_local_date:string='';
+begin
+  result:=false;
+  // массив таблиц
+        //mas_table_sync:array of array of string; // Массив таблиц для синхронизации
+        // mas_table_sync[n,0] - name table
+        // mas_table_sync[n,1] - max createdate
+
+  form1.write_log('=========================================================================');
+  form1.write_log('КОПИРОВАНИЕ:  Забираем данные таблиц из ЦС если необходимо для синхронизации...');
+
+  // Идем по списку выбранных серверов
+  for k:=0 to form1.StringGrid1.RowCount-1 do
+   begin
+   //------------------------------------------------------
+     // Если центарльный сервер то пропускаем
+     if form1.StringGrid1.Cells[0,k]='0' then continue;
+
+
+     //form1.write_log('СЕРВЕР: '+form1.StringGrid1.Cells[1,k])+'|'+form1.StringGrid1.Cells[2,k]+'|'+form1.StringGrid1.Cells[3,k]+'|'+form1.StringGrid1.Cells[4,k]);
+
+
+     // Идем по списку таблиц
+     for n:=0 to length(mas_table_sync)-1 do
+        begin
+          application.ProcessMessages;
+          // ================= Определяем максиммальную дату на текущем локальном сервере для текущей обновляемой таблицы -------------
+          //showmessage(form1.StringGrid1.Cells[1,k+1]);
+          tek_server:=strtoint(form1.StringGrid1.Cells[1,k+1]);
+          //set_server('remote');
+          max_local_date:='';
+          If not(Connect2(form1.Zconnection1, 1)) then
+               begin
+                 form1.write_log('- Локальный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ');
+                 break;
+               end;
+          application.ProcessMessages;
+          // ЗАБИРАЕМ СПИСОК ОБНОВЛЯЕМЫХ ТАБЛИЦ С ЦЕНТРАЛЬНОГО СЕРВЕРА
+          form1.ZQuery1.SQL.Clear;
+          form1.ZQuery1.SQL.Add('SELECT to_char(max(createdate),'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+') as createdate FROM '+trim(mas_table_sync[n,0])+' order by createdate DESC LIMIT 1;');
+          try
+           form1.ZQuery1.open;
+          except
+              form1.ZQuery1.Close;
+              form1.Zconnection1.disconnect;
+              break;
+          end;
+          if form1.ZQuery1.RecordCount=0 then
+              begin
+                form1.ZQuery1.SQL.Clear;
+                form1.ZQuery1.SQL.Add('SELECT to_char(current_date-10000,'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+') as createdate;');
+                try
+                 form1.ZQuery1.open;
+                except
+                    form1.ZQuery1.Close;
+                    form1.Zconnection1.disconnect;
+                    break;
+                end;
+                max_local_date:=form1.ZQuery1.FieldByName('createdate').asString;
+              end
+          else
+              begin
+               max_local_date:=form1.ZQuery1.FieldByName('createdate').asString;
+              end;
+          form1.ZQuery1.Close;
+          form1.Zconnection1.disconnect;
+
+          // ================= Делаем выборку в текущей таблице и COPY в '/tmp/sync_[name table sync]'
+          // ================= Если дата createdate ЛС <= createdate ЦС
+          //set_server('local');
+          If not(Connect2(form1.Zconnection1, 1)) then
+               begin
+                 form1.write_log('- Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ');
+                 break;
+               end;
+          application.ProcessMessages;
+          // КОПИРУЕМ COPY(SELECT) НА ЦС В /tmp/sync_[name table sync]
+          form1.ZQuery1.SQL.Clear;
+          form1.ZQuery1.SQL.Add('copy (SELECT * FROM '+trim(mas_table_sync[n,0])+' where createdate>'+quotedstr(max_local_date)+') to '+('/tmp/sync_')+trim(mas_table_sync[n,0])+';');
+          try
+           form1.ZQuery1.open;
+          except
+              form1.ZQuery1.Close;
+              form1.Zconnection1.disconnect;
+              break;
+          end;
+          form1.ZQuery1.Close;
+          form1.Zconnection1.disconnect;
+
+          // ================= Копируем файл с центрально сервера на локальный
+          // scp /home/me/Desktop/file.txt user@192.168.1.100:/home/remote_user/Desktop/file.txt
+          fpsystem('scp /tmp/sync_'+trim(mas_table_sync[n,0])+' platforma:19781985@'+trim(form1.StringGrid1.Cells[3,k])+':/tmp/'+trim(mas_table_sync[n,0]));
+
+
+          // ================= Заливаем скопированный файл на локальном сервере в временную таблицу tmpsync_[name table sync]
+
+
+
+
+          //set_server('local');
+        end;
+     //*************************** В ТРАНЗАКЦИИ ЗАЛИВАЕМ ДАННЫЕ tmpsync_[name table sync] в name table sync
+     //*************************** И УДАЛЯЕМ ДУБЛИКАТЫ
+
+
+
+
+     // ************************** ЗАКТЫВАЕМ ТРАНЗАКЦИЮ
+
+
+
+   //----------------- ПЕРЕХОД К ОБНОВЛЕНИЮ СЛЕДУЮЩЕГО СЕРВЕРА-------------------------------------
+   end;
+
+
+
+
+
+
+
+
+
+
+
+  // Подключаемся к центральному серверу
+  If not(Connect2(form1.Zconnection1, 1)) then
+    begin
+      form1.write_log('- Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ');
+      result:=false;
+      exit;
+    end;
+  application.ProcessMessages;
+  // ЗАБИРАЕМ СПИСОК ОБНОВЛЯЕМЫХ ТАБЛИЦ С ЦЕНТРАЛЬНОГО СЕРВЕРА
+  form1.ZQuery1.SQL.Clear;
+  form1.ZQuery1.SQL.Add('SELECT name_table FROM av_sync_table;');
+    try
+     form1.ZQuery1.open;
+     if form1.ZQuery1.RecordCount=0 then
+       begin
+         form1.ZQuery1.Close;
+         form1.Zconnection1.disconnect;
+         form1.write_log('--Обновление данных отключено на ЦС   ОПЕРАЦИЯ ВЫПОЛНЕНА УСПЕШНО ');
+         Result:=false;
+         exit;
+       end;
+     except
+     form1.ZQuery1.Close;
+     form1.Zconnection1.disconnect;
+     form1.write_log('- Невозможно получить список синхронизируемых справочников - НЕТ СОЕДИНЕНИЯ С ЦЕНТРАЛЬНЫМ СЕРВЕРОМ');
+     form1.write_log('!!!27 ОСТАНОВКА    ПРОДОЛЖЕНИЕ НЕВОЗМОЖНО ');
+     Result:=false;
+     exit;
+    end;
+    // Пишем список в массив
+    for n:=0 to form1.ZQuery1.RecordCount-1 do
+      begin
+         application.ProcessMessages;
+        SetLength(mas_table_sync,length(mas_table_sync)+1,2);
+        mas_table_sync[length(mas_table_sync)-1,0]:=form1.ZQuery1.FieldByName('name_table').asString;
+        form1.ZQuery1.Next;
+      end;
+
+
+  // Запрашиваем max createdate для каждой таблицы в списке
+  for n:=0 to length(mas_table_sync)-1 do
+   begin
+     application.ProcessMessages;
+    form1.ZQuery1.SQL.Clear;
+    form1.ZQuery1.SQL.Add('SELECT to_char(max(createdate),'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+') as createdate FROM '+mas_table_sync[n,0]+' order by createdate DESC limit 1;');
+      try
+       form1.ZQuery1.open;
+       except
+       form1.ZQuery1.Close;
+       form1.Zconnection1.disconnect;
+       form1.write_log('- Невозможно получить максимальную дату для обновления таблицы - '+mas_table_sync[n,0]);
+       form1.write_log('!!!28 ОСТАНОВКА    ПРОДОЛЖЕНИЕ НЕВОЗМОЖНО ');
+       Result:=false;
+       exit;
+      end;
+      mas_table_sync[n,1]:=form1.ZQuery1.FieldByName('createdate').asString;
+   end;
+   form1.write_log('- Успешно получен список синхронизируемых справочников.');
+   form1.write_log('');
+   form1.write_log('- Выполняем синхронизацию по списку:');
+   form1.write_log('');
+
+   form1.ZQuery1.Close;
+   form1.Zconnection1.disconnect;
+   result:=true;
+end;
+
+
+
+// Забираем список синхронизируемых таблиц на центральном сервере
+// и максимальную дату в таблице и все это кладем в массив
+function get_table_sync():boolean;
+ var
+   n:integer;
+begin
+   result:=false;
+   // Очищаем массив таблиц
+         //mas_table_sync:array of array of string; // Массив таблиц для синхронизации
+         // mas_table_sync[n,0] - name table
+         // mas_table_sync[n,1] - max createdate
+
+   SetLength(mas_table_sync,0,0);
+   form1.write_log('=========================================================================');
+   form1.write_log('*                           СИНХРОНИЗАЦИЯ СПРАВОЧНИКОВ                  *');
+   form1.write_log('=========================================================================');
+   form1.write_log('ПОДГОТОВКА:  Забираем список таблиц для синхронизации...');
+
+   // Подключаемся к центральному серверу
+   If not(Connect2(form1.Zconnection1, 1)) then
+     begin
+       form1.write_log('- Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ');
+       result:=false;
+       exit;
+     end;
+   application.ProcessMessages;
+   // ЗАБИРАЕМ СПИСОК ОБНОВЛЯЕМЫХ ТАБЛИЦ С ЦЕНТРАЛЬНОГО СЕРВЕРА
+   form1.ZQuery1.SQL.Clear;
+   form1.ZQuery1.SQL.Add('SELECT name_table FROM av_sync_table;');
+     try
+      form1.ZQuery1.open;
+      if form1.ZQuery1.RecordCount=0 then
+        begin
+          form1.ZQuery1.Close;
+          form1.Zconnection1.disconnect;
+          form1.write_log('--Обновление данных отключено на ЦС   ОПЕРАЦИЯ ВЫПОЛНЕНА УСПЕШНО ');
+          Result:=false;
+          exit;
+        end;
+      except
+      form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      form1.write_log('- Невозможно получить список синхронизируемых справочников - НЕТ СОЕДИНЕНИЯ С ЦЕНТРАЛЬНЫМ СЕРВЕРОМ');
+      form1.write_log('!!!30 ОСТАНОВКА    ПРОДОЛЖЕНИЕ НЕВОЗМОЖНО ');
+      Result:=false;
+      exit;
+     end;
+     // Пишем список в массив
+     for n:=0 to form1.ZQuery1.RecordCount-1 do
+       begin
+          application.ProcessMessages;
+         SetLength(mas_table_sync,length(mas_table_sync)+1,2);
+         mas_table_sync[length(mas_table_sync)-1,0]:=form1.ZQuery1.FieldByName('name_table').asString;
+         form1.ZQuery1.Next;
+       end;
+
+
+   // Запрашиваем max createdate для каждой таблицы в списке
+   for n:=0 to length(mas_table_sync)-1 do
+    begin
+      application.ProcessMessages;
+     form1.ZQuery1.SQL.Clear;
+     form1.ZQuery1.SQL.Add('SELECT to_char(max(createdate),'+quotedstr('dd.mm.yyyy hh24:mi:ss.us')+') as createdate FROM '+mas_table_sync[n,0]+' order by createdate DESC limit 1;');
+       try
+        form1.ZQuery1.open;
+        except
+        form1.ZQuery1.Close;
+        form1.Zconnection1.disconnect;
+        form1.write_log('- Невозможно получить максимальную дату для обновления таблицы - '+mas_table_sync[n,0]);
+        form1.write_log('!!!31 ОСТАНОВКА    ПРОДОЛЖЕНИЕ НЕВОЗМОЖНО ');
+        Result:=false;
+        exit;
+       end;
+       mas_table_sync[n,1]:=form1.ZQuery1.FieldByName('createdate').asString;
+    end;
+    form1.write_log('- Успешно получен список синхронизируемых справочников.');
+    form1.write_log('');
+    form1.write_log('- Выполняем синхронизацию по списку:');
+    form1.write_log('');
+
+    form1.ZQuery1.Close;
+    form1.Zconnection1.disconnect;
+    result:=true;
+ end;
+
+
+
+end.
+

@@ -1,0 +1,22 @@
+object FormIdle: TFormIdle
+  Left = 775
+  Height = 240
+  Top = 323
+  Width = 320
+  BorderIcons = []
+  BorderStyle = bsNone
+  Caption = 'FormIdle'
+  Color = clBlack
+  DefaultMonitor = dmDesktop
+  FormStyle = fsSystemStayOnTop
+  KeyPreview = True
+  OnClose = FormClose
+  OnKeyDown = FormKeyDown
+  OnShow = FormShow
+  LCLVersion = '1.1'
+  object Timer1: TTimer
+    OnTimer = Timer1Timer
+    left = 280
+    top = 8
+  end
+end

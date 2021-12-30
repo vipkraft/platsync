@@ -1,0 +1,1152 @@
+unit main;
+
+{$mode objfpc}{$H+}
+
+interface
+
+uses
+  Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, StdCtrls,
+  ExtCtrls, ComCtrls, Grids, IniPropStorage, Buttons, ZVDateTimePicker,
+  ZConnection, ZDataset, ZSqlProcessor, ZSqlMonitor, platproc, lclproc,
+  sync_sprav, sync_proc;
+
+type
+
+  { TForm1 }
+
+  TForm1 = class(TForm)
+    BitBtn1: TBitBtn;
+    BitBtn2: TBitBtn;
+    BitBtn3: TBitBtn;
+    Button1: TButton;
+    Button10: TButton;
+    Button11: TButton;
+    Button2: TButton;
+    Button3: TButton;
+    Button4: TButton;
+    Button5: TButton;
+    Button6: TButton;
+    Button7: TButton;
+    Button8: TButton;
+    Button9: TButton;
+    CheckBox1: TCheckBox;
+    clock_timer: TTimer;
+    Edit1: TEdit;
+    Edit2: TEdit;
+    Edit5: TEdit;
+    GroupBox1: TGroupBox;
+    IdleTimer1: TIdleTimer;
+    Image1: TImage;
+    IniPropStorage1: TIniPropStorage;
+    Label10: TLabel;
+    Label11: TLabel;
+    Label2: TLabel;
+    Label3: TLabel;
+    Label4: TLabel;
+    Label5: TLabel;
+    Label6: TLabel;
+    Label7: TLabel;
+    Label8: TLabel;
+    Label9: TLabel;
+    Memo1: TMemo;
+    PageControl1: TPageControl;
+    Panel1: TPanel;
+    ProgressBar1: TProgressBar;
+    SaveDialog1: TSaveDialog;
+    Splitter1: TSplitter;
+    StringGrid1: TStringGrid;
+    StringGrid2: TStringGrid;
+    StringGrid3: TStringGrid;
+    TabSheet1: TTabSheet;
+    auto_sync: TTimer;
+    TabSheet2: TTabSheet;
+    ZConnection1: TZConnection;
+    ZConnection2: TZConnection;
+    ZQuery1: TZReadOnlyQuery;
+    ZQuery2: TZQuery;
+    ZQuery3: TZQuery;
+    ZQuery4: TZQuery;
+    ZSQLMonitor1: TZSQLMonitor;
+    ZSQLProcessor1: TZSQLProcessor;
+    ZVDateTimePicker1: TZVDateTimePicker;
+    procedure auto_syncTimer(Sender: TObject);
+    procedure BitBtn1Click(Sender: TObject);
+    procedure BitBtn2Click(Sender: TObject);
+    procedure Button10Click(Sender: TObject);
+    procedure Button11Click(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
+    procedure Button4Click(Sender: TObject);
+    procedure Button5Click(Sender: TObject);
+    procedure Button6Click(Sender: TObject);
+    procedure Button7Click(Sender: TObject);
+    procedure Button8Click(Sender: TObject);
+    procedure Button9Click(Sender: TObject);
+    procedure CheckBox1Change(Sender: TObject);
+    procedure clock_timerTimer(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    // Создание списка обновляемых серверов
+    function create_list_servers():boolean;  // true - успех
+    // Создание списка обновляемых процедур
+    function create_list_proc(): boolean;  // true - успех
+    procedure FormShow(Sender: TObject);
+    procedure StringGrid1DrawCell(Sender: TObject; aCol, aRow: Integer;
+      aRect: TRect; aState: TGridDrawState);
+    procedure StringGrid2DrawCell(Sender: TObject; aCol, aRow: Integer;
+      aRect: TRect; aState: TGridDrawState);
+    // Обновляем GRID серверов
+    procedure Update_grid;
+    // Обновляем GRID хранимых процедур
+    procedure Update_grid_proc;
+    // Запись лога выполнения операций
+    procedure write_log(oper:string);
+    // Ищем выбранные сервера в массиве
+    function select_servers(id:string):boolean;
+    // Пишем настройки
+    procedure write_settings(flag:byte);
+    // Читаем настройки
+    procedure read_settings;
+    // Запись лога синхронизации в базу данных
+    procedure DataBaseLog(success:integer);
+    //синхронизация
+    procedure StartS();
+  private
+    { private declarations }
+  public
+    { public declarations }
+  end;
+
+const
+   timeout_signal=300; //предудпреждение перед закрытием
+
+var
+  Form1: TForm1;
+  flagProfile:integer=0;
+  Info:string='';
+  flclose:boolean=true; //закрывать формы
+  timeout_global:integer=0;  //счетчик таймер бездействия (перед окном закрытия форм операций)
+  timeout_local:integer=0;
+  virt_sync_data:boolean=false;
+  flag_real:boolean=false;
+
+  mas_serv_loc:array of array of string; //массив серверов для обновления
+  // mas_serv_loc[n,0] - id_point
+  // mas_serv_loc[n,1] - name
+  // mas_serv_loc[n,2] - ip
+  // mas_serv_loc[n,3] - port
+  // mas_serv_loc[n,4] - base
+  // mas_serv_loc[n,5] - login
+  // mas_serv_loc[n,6] - passwd
+  // mas_serv_loc[n,7] - check
+
+  mas_serv_proc:array of array of string; //массив процедур для обновления
+  // mas_serv_proc[n,0] - procname
+  // mas_serv_proc[n,1] - procparam
+
+
+  mas_table_sync:array of array of string; // Массив таблиц для синхронизации
+  // mas_table_sync[n,0] - name table
+  // mas_table_sync[n,0] - max createdate
+
+
+  //========================= Перемнные из INI для списка серверов ==========================
+  ini_local:boolean=false;
+  ini_select_server:boolean=false;
+  mas_server:array of string; //Список выбранных и сохранненных id серверов
+
+
+
+implementation
+
+{$R *.lfm}
+
+{ TForm1 }
+
+// Запись лога выполнения операций
+procedure TForm1.write_log(oper: string);
+ var
+  log_file:TextFile;
+  filename:string;
+begin
+  form1.Memo1.lines.Add(FormatDateTime('yyyy-mm-dd h:m:s.z', now())+'| '+oper);
+  application.ProcessMessages;
+
+  // Текущее имя файла лога
+  filename:=ExtractFilePath(Application.ExeName)+'log/'+trim('sync_'+FormatDateTime('yyyy-mm-dd', now())+'.log');
+  // --------Проверяем что уже есть каталог LOG если нет то создаем
+  If Not DirectoryExistsUTF8(ExtractFilePath(Application.ExeName)+'log') then
+    begin
+     CreateDir(ExtractFilePath(Application.ExeName)+'log');
+    end;
+  {$I-} // отключение контроля ошибок ввода-вывода
+   AssignFile(log_file,filename);
+    if fileexistsUTF8(filename) then
+       Append(log_file) else
+       Rewrite(log_file); // открытие файла для записи
+
+   {$I+} // включение контроля ошибок ввода-вывода
+  if IOResult<>0 then // если есть ошибка открытия, то
+     Exit;
+
+  writeln(log_file,FormatDateTime('yyyy-mm-dd hh:nn:ss', now())+'| '+oper);
+  closefile(log_file);
+end;
+
+
+// Запись лога синхронизации в базу данных
+procedure TForm1.DataBaseLog(success:integer);
+//var
+   //log_file: textfile;
+   //n:integer;
+begin
+   //kol_attempt:=1;
+   //flag_oper:byte=0;
+  //form1.write_log('******************************************************************************************');
+
+  form1.write_log('*********    Запись журнала синхронизации на Центральный сервер:  *************');
+  //form1.write_log('******************************************************************************************');
+
+  // ----------------------------Подключаемся к центральному серверу
+   if not(form1.ZConnection1.Connected) then
+    begin
+      If not(Connect2(form1.Zconnection1, 1)) then
+        begin
+          form1.write_log('- Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕДОСТУПЕН');
+        end;
+      // Начинаем транзакцию
+     try
+      If not form1.Zconnection1.InTransaction then
+             begin
+               form1.Zconnection1.StartTransaction;
+             end
+           else
+             begin
+               form1.write_log('!!!1 ОСТАНОВКА   Незавершенная транзакция !!!');
+               form1.ZConnection1.Rollback;
+               exit;
+             end;
+
+          // Делаем результирующую запись на ЦС
+          form1.ZQuery1.SQL.Clear;
+          form1.ZQuery1.SQL.add('INSERT INTO av_update_log(createdate, id_server, attempt, sync_result) VALUES (');
+          form1.ZQuery1.SQL.add('now(),'+trim(connectini[14])+',1,');
+          If success=0 then
+           form1.ZQuery1.SQL.add('true')
+          else
+            form1.ZQuery1.SQL.add('false');
+          form1.ZQuery1.SQL.add(');');
+       try
+        //$showmessage(form1.ZQuery1.SQL.Text);
+        form1.ZQuery1.open;
+       except
+        form1.write_log('!!!2 ОСТАНОВКА   НЕВОЗМОЖНО СОЗДАТЬ LOG СИНХРОНИЗАЦИИ  на ЦС !!!');
+        form1.ZQuery1.Close;
+        exit;
+       end;
+     //-------------------------- Завершение транзакции
+       form1.Zconnection1.Commit;
+     except
+      form1.ZConnection1.Rollback;
+      form1.write_log('!!!3 ОСТАНОВКА   Незавершенная транзакция !!!');
+      form1.ZConnection1.Rollback;
+      exit;
+    end;
+
+  form1.ZQuery1.Close;
+  form1.ZConnection1.Disconnect;
+  //form1.write_log('******************************************************************************************');
+  form1.write_log('*********    Запись журнала на Центральный сервер ЗАВЕРШЕНА:  *************');
+  form1.write_log('***********************************************************************************');
+ end;
+
+end;
+
+
+
+
+// Обновляем GRID хранимых процедур
+procedure TForm1.Update_grid_proc;
+var
+  n:integer;
+begin
+// Заполняем Grid
+form1.StringGrid2.RowCount:=1;
+for n:=0 to length(mas_serv_proc)-1 do
+   begin
+     form1.StringGrid2.RowCount:=form1.StringGrid2.RowCount+1;
+     form1.StringGrid2.Cells[0,form1.StringGrid2.RowCount-1]:='0';
+     form1.StringGrid2.Cells[1,form1.StringGrid2.RowCount-1]:=mas_serv_proc[n,0];
+     form1.StringGrid2.Cells[2,form1.StringGrid2.RowCount-1]:=mas_serv_proc[n,1];
+   end;
+end;
+
+
+
+// Создание списка обновляемых процедур
+function TForm1.create_list_proc(): boolean;  // true - успех
+ var
+  n:integer;
+begin
+  result:=false;
+  SetLength(mas_serv_proc,0,0);
+  // Подключаемся к центральному серверу
+  If not(Connect2(form1.Zconnection1, 1)) then
+     begin
+       write_log('[Создание списка обновляемых серверов]: Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ');
+       exit;
+     end;
+
+  // ЗАБИРАЕМ СПИСОК ДОСТУПНЫХ ПРОЦЕДУР
+   form1.ZQuery1.SQL.Clear;
+   form1.ZQuery1.SQL.Add('SELECT  proname,proargnames ');
+   form1.ZQuery1.SQL.Add('FROM    pg_catalog.pg_namespace n');
+   form1.ZQuery1.SQL.Add('JOIN    pg_catalog.pg_proc p');
+   form1.ZQuery1.SQL.Add('ON      pronamespace = n.oid');
+   form1.ZQuery1.SQL.Add('WHERE   nspname = '+quotedstr('public')+' and proname not LIKE '+quotedstr('%dblink%')+' order by proname;');
+   //--аналогичный запрос
+   //SELECT  proname
+  //FROM pg_catalog.pg_proc p
+  //WHERE pronamespace=2200
+  //--p.proname ~ '^aflawless_dohod$'
+      //AND pg_catalog.pg_function_is_visible(p.oid)
+      //and p.proname !~ '^dblink';
+   //showmessage(form1.ZQuery1.SQL.Text);//$
+   try
+      form1.ZQuery1.open;
+      if form1.ZQuery1.RecordCount=0 then
+        begin
+          form1.ZQuery1.Close;
+          form1.Zconnection1.disconnect;
+          write_log('[Создание списка обновляемых серверов]: НЕТ ДАННЫХ ПО СЕРВЕРАМ ПРОДАЖ !');
+          exit;
+        end;
+     except
+      form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      write_log('[Создание списка обновляемых серверов]: !!!!!!!!! ОШИБКА ЗАПРОСА !!!!!!!!!!');
+      write_log(form1.ZQuery1.SQL.Text);
+      exit;
+     end;
+
+     // Заполняем список доступных процедур
+     // mas_serv_proc[n,0] - procname
+     // mas_serv_proc[n,1] - procparam
+      for n:=0  to form1.ZQuery1.RecordCount-1 do
+        begin
+          SetLength(mas_serv_proc,length(mas_serv_proc)+1,2);
+          mas_serv_proc[length(mas_serv_proc)-1,0]:=form1.ZQuery1.FieldByName('proname').AsString;
+          mas_serv_proc[length(mas_serv_proc)-1,1]:=form1.ZQuery1.FieldByName('proargnames').AsString;
+          form1.ZQuery1.Next;
+        end;
+     form1.ZQuery1.Close;
+     form1.ZConnection1.Disconnect;
+     result:=true;
+end;
+
+procedure TForm1.FormShow(Sender: TObject);
+begin
+  // Устанавливаем фоку страницы
+  form1.PageControl1.ActivePageIndex:=0;
+  form1.Button1.SetFocus;
+  FORM1.CheckBox1.Checked:=true;
+end;
+
+
+
+// Читаем настройки
+procedure TForm1.read_settings;
+ var
+   fileini:string;
+   n:integer;
+   name_serv:widestring;
+   tek_id:string;
+   s1,s2:integer;
+begin
+  fileini:=ExtractFilePath(Application.ExeName)+'platsync_settings.ini';
+  with form1.IniPropStorage1 do
+     begin
+       inifilename:=fileini;
+       IniSection:='AUTO SYNC';
+       form1.ZVDateTimePicker1.Time:=strtotime(ReadString('auto_sync_time','00:00'));
+       IniSection:='SYNC SERVER'; //указываем секцию
+       //mas_server:array of string; //Список выбранных и сохранненных id серверов
+       name_serv:= ReadString('list servers','');
+       setlength(mas_server,0);
+       if length(name_serv)>0 then
+          begin
+           s1:=1;
+           s2:=1;
+           for n:=1 to length(name_serv) do
+              begin
+                if UTF8Copy(name_serv,n,1)='|' then
+                   begin
+                     SetLength(mas_server,length(mas_server)+1);
+                     mas_server[length(mas_server)-1]:=UTF8Copy(name_serv,s1,n-s2);
+                     s1:=n+1;
+                     s2:=n+1;
+                   end;
+              end;
+          end;
+     end;
+end;
+
+
+// Пишем настройки
+procedure TForm1.write_settings(flag: byte);
+ var
+   fileini:string;
+   n:integer;
+   name_serv:widestring;
+begin
+  fileini:=ExtractFilePath(Application.ExeName)+'platsync_settings.ini';
+
+  // Пишем новый файл с настройками по умолчанию
+  if FileExistsUTF8(fileini)=false then
+    begin
+         with form1.IniPropStorage1 do
+           begin
+             inifilename:=fileini;
+             IniSection:='AUTO SYNC';
+             WriteString('auto_sync_time','00:00');
+             IniSection:='SYNC SERVER'; //указываем секцию
+             WriteString('select list servers','0');
+            end;
+    end;
+
+  // Пишем значения для автоматического срабатывания
+   if flag=1 then
+     begin
+       with form1.IniPropStorage1 do
+           begin
+             inifilename:=fileini;
+             IniSection:='AUTO SYNC';
+             WriteString('auto_sync_time',timetostr(form1.ZVDateTimePicker1.Time));
+            end;
+     end;
+
+   // Пишем значения для выбора серверов
+    if flag=2 then
+      begin
+        with form1.IniPropStorage1 do
+            begin
+              inifilename:=fileini;
+              IniSection:='SYNC SERVER'; //указываем секцию
+              name_serv:='';
+              for n:=1 to form1.StringGrid1.RowCount-1 do
+                 begin
+                   if trim(form1.StringGrid1.Cells[0,n])='1' then name_serv:=name_serv+trim(form1.StringGrid1.Cells[1,n])+'|';
+                 end;
+              WriteString('list servers',name_serv);
+             end;
+      end;
+
+
+   read_settings;
+
+end;
+
+// Ищем выбранные сервера в массиве
+function TForm1.select_servers(id:string):boolean;
+ var
+   n:integer;
+begin
+    for n:=0 to length(mas_server)-1 do
+       begin
+         if trim(mas_server[n])=trim(id) then
+           begin
+             result:=true;
+             exit;
+           end;
+       end;
+    result:=false;
+end;
+
+
+
+// Обновляем GRID серверов
+procedure TForm1.Update_grid;
+var
+  n:integer;
+begin
+// Заполняем Grid
+form1.StringGrid1.RowCount:=1;
+for n:=0 to length(mas_serv_loc)-1 do
+   begin
+     form1.StringGrid1.RowCount:=form1.StringGrid1.RowCount+1;
+     form1.StringGrid1.Cells[0,form1.StringGrid1.RowCount-1]:=mas_serv_loc[n,7];
+     form1.StringGrid1.Cells[1,form1.StringGrid1.RowCount-1]:=mas_serv_loc[n,0];
+     form1.StringGrid1.Cells[2,form1.StringGrid1.RowCount-1]:=mas_serv_loc[n,1];
+     form1.StringGrid1.Cells[3,form1.StringGrid1.RowCount-1]:=mas_serv_loc[n,2];
+     form1.StringGrid1.Cells[4,form1.StringGrid1.RowCount-1]:=mas_serv_loc[n,4];
+   end;
+end;
+
+// Создание списка обновляемых серверов
+function TForm1.create_list_servers(): boolean;  // true - успех
+ var
+  n:integer;
+begin
+  result:=false;
+  SetLength(mas_serv_loc,0,0);
+  // Подключаемся к центральному серверу
+  If not(Connect2(form1.Zconnection1, 1)) then
+     begin
+       write_log('[Создание списка обновляемых серверов]: Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ');
+       exit;
+     end;
+
+  // ЗАБИРАЕМ СПИСОК ДОСТУПНЫХ СЕРВЕРОВ
+   form1.ZQuery1.SQL.Clear;
+   form1.ZQuery1.SQL.Add('select cast(substring(ip2 from 9 for 3) as integer) ipp ');
+   form1.ZQuery1.SQL.Add(',d.point_id as id,d.ip,d.ip2,d.base_name,d.login,d.pwd,d.port,f.name,d.real_virtual ');
+   form1.ZQuery1.SQL.Add('from av_servers d,av_spr_point f where d.del=0 and f.del=0 and d.active=1 and f.id=d.point_id ');
+   form1.ZQuery1.SQL.Add('order by d.real_virtual desc, f.name; ');
+   //form1.ZQuery1.SQL.Add('select d.point_id as id,d.ip,d.ip2,d.base_name,d.login,d.pwd,d.port,f.name,d.real_virtual');
+   //form1.ZQuery1.SQL.Add('from av_servers d,av_spr_point f where d.del=0 and f.del=0 and d.active=1 and f.id=d.point_id order by f.name;');
+   //showmessage(form1.ZQuery1.SQL.Text);
+   try
+      form1.ZQuery1.open;
+      if form1.ZQuery1.RecordCount=0 then
+        begin
+          form1.ZQuery1.Close;
+          form1.Zconnection1.disconnect;
+          write_log('[Создание списка обновляемых серверов]: НЕТ ДАННЫХ ПО СЕРВЕРАМ ПРОДАЖ !');
+          exit;
+        end;
+     except
+      form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      write_log('[Создание списка обновляемых серверов]: !!!!!!!!! ОШИБКА ЗАПРОСА !!!!!!!!!!');
+      write_log(form1.ZQuery1.SQL.Text);
+      exit;
+     end;
+
+     // Заполняем список доступных серверов
+     // mas_serv_loc[n,0] - id_point
+     // mas_serv_loc[n,1] - name
+     // mas_serv_loc[n,2] - ip
+     // mas_serv_loc[n,3] - port
+     // mas_serv_loc[n,4] - base
+     // mas_serv_loc[n,5] - login
+     // mas_serv_loc[n,6] - passwd
+     // mas_serv_loc[n,7] - check
+     for n:=0  to form1.ZQuery1.RecordCount-1 do
+        begin
+          SetLength(mas_serv_loc,length(mas_serv_loc)+1,9);
+          mas_serv_loc[length(mas_serv_loc)-1,0]:=form1.ZQuery1.FieldByName('id').AsString;
+          mas_serv_loc[length(mas_serv_loc)-1,1]:=form1.ZQuery1.FieldByName('name').AsString;
+          mas_serv_loc[length(mas_serv_loc)-1,2]:=ip_del_zero(form1.ZQuery1.FieldByName('ip2').AsString);
+          mas_serv_loc[length(mas_serv_loc)-1,3]:=form1.ZQuery1.FieldByName('port').AsString;
+          mas_serv_loc[length(mas_serv_loc)-1,4]:=form1.ZQuery1.FieldByName('base_name').AsString;
+          mas_serv_loc[length(mas_serv_loc)-1,5]:=form1.ZQuery1.FieldByName('login').AsString;
+          mas_serv_loc[length(mas_serv_loc)-1,6]:=form1.ZQuery1.FieldByName('pwd').AsString;
+          if select_servers(mas_serv_loc[length(mas_serv_loc)-1,0]) then mas_serv_loc[length(mas_serv_loc)-1,7]:='1' else mas_serv_loc[length(mas_serv_loc)-1,7]:='0';
+          mas_serv_loc[length(mas_serv_loc)-1,8]:=form1.ZQuery1.FieldByName('real_virtual').AsString;
+          form1.ZQuery1.Next;
+        end;
+     form1.ZQuery1.Close;
+     form1.ZConnection1.Disconnect;
+     result:=true;
+end;
+
+
+procedure TForm1.StringGrid1DrawCell(Sender: TObject; aCol, aRow: Integer;
+  aRect: TRect; aState: TGridDrawState);
+begin
+   //if trim(Form1.StringGrid1.Cells[0,aRow])='1' then
+   //  begin
+   //    Form1.StringGrid1.Canvas.Brush.Color:=clMoneyGreen;
+   //  end;
+   //
+ with Sender as TStringGrid, Canvas do
+   begin
+         //    Если фокус
+         if (gdSelected in aState) then
+           begin
+            Brush.Color:=clSkyBlue;
+            FillRect(aRect);
+            pen.Width:=2;
+            pen.Color:=clGray;
+            MoveTo(aRect.left,aRect.bottom-1);
+            LineTo(aRect.right,aRect.Bottom-1);
+            MoveTo(aRect.left,aRect.top-1);
+            LineTo(aRect.right,aRect.Top);
+           end
+         else
+          begin
+           //Раскрашиваем в соответствии с состоянием рейса
+          if arow>0 then
+            begin
+             Brush.Color:=clWhite; //'ОТКРЫТ'
+            end;
+           end;
+            FillRect(aRect);
+            pen.Width:=2;
+            pen.Color:=clGray;
+            MoveTo(aRect.left,aRect.bottom-1);
+            LineTo(aRect.right,aRect.Bottom-1);
+
+
+            // ТЕКСТ
+            if (arow>0) and (acol>0) then
+              begin
+               font.Color:=clBlack;
+               if trim(mas_serv_loc[arow-1,8])='1' then font.Color:=clBlue else font.Color:=clBlack;
+               font.size:=14;
+               font.Style:=[];
+               //form1.StringGrid1.Canvas.TextRect(aRect,arow+5,5,form1.StringGrid1.Cells[aCol, aRow]);
+               DrawCellsAlign(form1.StringGrid1,2,2,form1.StringGrid1.Cells[aCol, aRow],aRect);
+              end;
+
+            // Чек бокс
+            if (arow>0) and (acol=0) then
+              begin
+               font.Color:=clRed;
+               font.size:=24;
+               font.Style:=[];
+               //form1.StringGrid1.Canvas.TextRect(aRect,arow+5,5,form1.StringGrid1.Cells[aCol, aRow]);
+               if trim(Cells[aCol, aRow])='1' then
+                begin
+                 brush.Color:=clRed;
+                 FillRect(aRect);
+                 pen.Width:=2;
+                 pen.Color:=clGray;
+                 MoveTo(aRect.left,aRect.bottom-1);
+                 LineTo(aRect.right,aRect.Bottom-1);
+                 //textout(arow,acol,'*');
+                  //textout(arect.Left+2,arect.Top+2,'*');
+                 //DrawCellsAlign(form1.StringGrid1,2,2,form1.StringGrid1.Cells[aCol, aRow],aRect);
+                 //DrawCellsAlign(form1.StringGrid1,2,2,'*',aRect);
+                end
+               else
+                begin
+                brush.Color:=clWhite;
+                FillRect(aRect);
+                pen.Width:=2;
+                pen.Color:=clGray;
+                MoveTo(aRect.left,aRect.bottom-1);
+                LineTo(aRect.right,aRect.Bottom-1);
+                 //DrawCellsAlign(form1.StringGrid1,2,2,'',aRect);
+                 //textout(arow,acol,'');
+                end;
+            end;
+
+            // Заголовок
+            if (arow=0) then
+              begin
+               font.Color:=clBlack;
+               font.size:=12;
+               font.Style:=[];
+               DrawCellsAlign(form1.StringGrid1,2,2,form1.StringGrid1.Cells[aCol, aRow],aRect);
+              end;
+
+   end;
+
+end;
+
+procedure TForm1.StringGrid2DrawCell(Sender: TObject; aCol, aRow: Integer;
+  aRect: TRect; aState: TGridDrawState);
+begin
+
+ with Sender as TStringGrid, Canvas do
+   begin
+         //    Если фокус
+         if (gdSelected in aState) then
+           begin
+            Brush.Color:=clSkyBlue;
+            FillRect(aRect);
+            pen.Width:=2;
+            pen.Color:=clGray;
+            MoveTo(aRect.left,aRect.bottom-1);
+            LineTo(aRect.right,aRect.Bottom-1);
+            MoveTo(aRect.left,aRect.top-1);
+            LineTo(aRect.right,aRect.Top);
+           end
+         else
+          begin
+          if arow>0 then
+            begin
+             Brush.Color:=clWhite;
+            end;
+           end;
+            FillRect(aRect);
+            pen.Width:=2;
+            pen.Color:=clGray;
+            MoveTo(aRect.left,aRect.bottom-1);
+            LineTo(aRect.right,aRect.Bottom-1);
+
+
+            // ТЕКСТ
+            if (arow>0) and (acol>0) then
+              begin
+               font.Color:=clBlack;
+               font.Color:=clBlack;
+               font.size:=11;
+               font.Style:=[];
+               //form1.StringGrid1.Canvas.TextRect(aRect,arow+5,5,form1.StringGrid1.Cells[aCol, aRow]);
+               DrawCellsAlign(form1.StringGrid2,1,2,form1.StringGrid2.Cells[aCol, aRow],aRect);
+              end;
+
+            // Чек бокс
+            if (arow>0) and (acol=0) then
+              begin
+               font.Color:=clBlue;
+               font.size:=24;
+               font.Style:=[];
+               //form1.StringGrid1.Canvas.TextRect(aRect,arow+5,5,form1.StringGrid1.Cells[aCol, aRow]);
+               if trim(Cells[aCol, aRow])='1' then
+                begin
+                 brush.Color:=clRed;
+                 FillRect(aRect);
+                 pen.Width:=2;
+                 pen.Color:=clGray;
+                 MoveTo(aRect.left,aRect.bottom-1);
+                 LineTo(aRect.right,aRect.Bottom-1);
+                 //textout(arow,acol,'*');
+                  //textout(arect.Left+2,arect.Top+2,'*');
+                 //DrawCellsAlign(form1.StringGrid1,2,2,form1.StringGrid1.Cells[aCol, aRow],aRect);
+                 //DrawCellsAlign(form1.StringGrid1,2,2,'*',aRect);
+                end
+               else
+                begin
+                brush.Color:=clWhite;
+                FillRect(aRect);
+                pen.Width:=2;
+                pen.Color:=clGray;
+                MoveTo(aRect.left,aRect.bottom-1);
+                LineTo(aRect.right,aRect.Bottom-1);
+                 //DrawCellsAlign(form1.StringGrid1,2,2,'',aRect);
+                 //textout(arow,acol,'');
+                end;
+            end;
+
+            // Заголовок
+            if (arow=0) then
+              begin
+               font.Color:=clBlack;
+               font.size:=10;
+               font.Style:=[];
+               DrawCellsAlign(form1.StringGrid2,1,2,form1.StringGrid2.Cells[aCol, aRow],aRect);
+              end;
+
+   end;
+
+
+end;
+
+
+
+procedure TForm1.clock_timerTimer(Sender: TObject);
+var
+ n,k:integer;
+begin
+   // Текущая дата и время
+  form1.Label8.Caption:=timetostr(time())+' '+datetostr(now());
+  k:=0;
+  for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+        if trim(form1.StringGrid1.Cells[0,n])='1' then inc(k);
+     end;
+  form1.Label11.Caption:=inttostr(k);
+end;
+
+procedure TForm1.BitBtn2Click(Sender: TObject);
+begin
+  form1.close;
+end;
+
+procedure TForm1.Button10Click(Sender: TObject);
+var
+   n:integer;
+begin
+   // Снимаем ВСЕ
+   for n:=1 to form1.StringGrid2.RowCount-1 do
+     begin
+       if trim(form1.StringGrid2.Cells[0,n])='1' then form1.StringGrid2.Cells[0,n]:='0' else form1.StringGrid2.Cells[0,n]:='1';
+     end;
+end;
+
+procedure TForm1.Button11Click(Sender: TObject);
+begin
+  if (form1.SaveDialog1.execute) and (form1.SaveDialog1.FileName<>'') then
+   begin
+    form1.Memo1.Lines.SaveToFile(form1.SaveDialog1.filename);
+    showmessage('Файл УСПЕШНО сохранен !');
+
+   end;
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+begin
+   form1.write_log('--------------\*/ Синхронизация НАЧАЛО ВРУЧНУЮ \*/---------------');
+   form1.StartS();
+ end;
+
+//синхронизация
+procedure TForm1.StartS();
+ var
+  n:integer;
+  sync_res:integer;
+  gotit:boolean; //флаг отметки сервера на обновление
+begin
+   form1.auto_sync.Enabled:=false;
+   form1.Button1.Color:=clGray;
+   form1.Memo1.Clear;
+   form1.panel1.Visible:=true;
+   application.ProcessMessages;
+    //flag_real:=false;
+    virt_sync_data:=false;
+
+    gotit:=false;//флаг отметки сервера на обновление
+   // Цикл по обновлению серверов по порядку в GRID
+   form1.Label6.Caption:='';
+   for n:=1 to form1.StringGrid1.RowCount-1 do
+      begin
+       sync_res:=0;
+        // Если IP и name base совпадают с ЦЕНТРАЛЬНЫМ то пропуск
+        if (trim(form1.StringGrid1.Cells[3,n])=trim(form1.edit1.Text)) and (trim(form1.StringGrid1.Cells[4,n])=trim(form1.edit5.Text)) then continue;
+        // Если сервер активен то обновляем
+        if trim(form1.StringGrid1.Cells[0,n])='1' then
+          begin
+            gotit:=true;
+            form1.StringGrid1.Row:=n;
+            //flag_real:=false;
+            ConnectINI[4]:=trim(form1.StringGrid1.Cells[3,n]);
+            ConnectINI[5]:='5432';
+            ConnectINI[6]:=trim(form1.StringGrid1.Cells[4,n]);
+            ConnectINI[14]:=trim(form1.StringGrid1.Cells[1,n]);
+            form1.Label6.Caption:=' Обновляется сервер :'+#13+'               '+trim(ConnectINI[4])+':'+trim(ConnectINI[5])+#13+
+                                                              '               '+trim(ConnectINI[6])+' ['+trim(ConnectINI[14])+']';
+            //form1.write_log(' ');
+            form1.write_log('******************************< '+inttostr(n)+' >***********************************');
+            //form1.write_log('Обновляется сервер:  '+trim(ConnectINI[4])+'  '+trim(ConnectINI[6])+' ['+trim(ConnectINI[14])+']');
+            form1.write_log('Обновляется сервер '+trim(form1.StringGrid1.Cells[2,n])+' ['+ConnectINI[14]+'] ip:'+ConnectINI[4]);
+            // Синхронизируем справочники и Создаем локальные списки расписаний
+
+            //определяем реальный или нет
+           if trim(mas_serv_loc[n-1,8])='1' then flag_real:=true
+                                            else flag_real:=false;
+
+           //если реальный
+           if flag_real then
+             begin
+               //sync_res:=sync_data();
+              if sync_res=0 then
+                 sync_res:=sync_sprav.Sync_local_shedule();
+              //запись лога в базу
+               form1.DataBaseLog(sync_res);
+
+             end;
+           //если данные виртуальных не синхронизировались за цикл, делаем
+           If not flag_real and not virt_sync_data then
+                begin
+                   sync_data();
+                end;
+            //делаем локальные списки
+            if not flag_real and (sync_res=0) then
+             begin
+                sync_res:=sync_sprav.Sync_local_shedule();
+                //запись лога в базу
+                form1.DataBaseLog(sync_res);
+                 if sync_res=0 then  virt_sync_data:=true;
+                end;
+            end;
+            //if sync_data()=0 then sync_sprav.Sync_local_shedule();
+          end;
+   //если не было отмечено ни одного сервера, тогда обновлять из local.ini
+   If gotit=false then
+    begin
+      // Если IP и name base совпадают с ЦЕНТРАЛЬНЫМ то пропуск
+      If (ConnectINI[1]=ConnectINI[4]) and (ConnectINI[3]=ConnectINI[6]) then
+       begin
+          form1.Panel1.Visible:=false;
+          form1.Button1.Color:=clRed;
+          //application.ProcessMessages;
+          form1.auto_sync.Enabled:=true;
+          showmessage('IP-адрес и имя локальной БД совпадает с Центральной БД !'+#13+'ОПЕРАЦИЯ БУДЕТ ОТМЕНЕНА !');
+          exit;
+        end;
+
+          form1.Label6.Caption:=' Обновляется сервер :'+#13+'               '+trim(ConnectINI[4])+':'+trim(ConnectINI[5])+#13+
+                                                              '               '+trim(ConnectINI[6])+' ['+trim(ConnectINI[14])+']';
+          form1.write_log('Обновляется сервер '+trim(form1.StringGrid1.Cells[2,n])+' ['+ConnectINI[14]+'] ip:'+ConnectINI[4]);
+          flag_real:=true;
+            sync_res:=sync_data();
+              if sync_res=0 then
+                 sync_res:=sync_sprav.Sync_local_shedule();
+              //запись лога в базу
+               form1.DataBaseLog(sync_res);
+     end;
+
+
+   If form1.Memo1.Lines.Count>2 then
+    begin
+   form1.write_log('--------------/*\ Синхронизация ЗАВЕРШЕНА !  /*\---------------');
+   form1.write_log('--------------/*\                            /*\---------------');
+    end;
+   //// Забираем список таблиц
+   //if get_table_sync()=false then
+   //  begin
+   //    exit;
+   //  end;
+   //application.ProcessMessages;
+
+
+   //// Копируем обновляемые данные с сервера на сервер
+   //if copy_data_sync()=false then
+   //  begin
+   //    form1.write_log('! ОШИБКА !!! ДАЛЬНЕЙШЕЕ ВЫПОЛНЕНИЕ ОПЕРАЦИИ НЕВОЗМОЖНО!!!        !');
+   //    exit;
+   //  end;
+   //application.ProcessMessages;
+   //application.ProcessMessages;
+
+   form1.Panel1.Visible:=false;
+   form1.Button1.Color:=clRed;
+   application.ProcessMessages;
+   form1.auto_sync.Enabled:=true;
+end;
+
+
+//обновление хранимок
+procedure TForm1.Button2Click(Sender: TObject);
+ var
+  flag:boolean=false;
+  n,m:integer;
+begin
+ // ---- НАЧАЛЬНЫЕ ПРОВЕРКИ ------ //
+ if form1.StringGrid1.RowCount<2 then
+  begin
+    showmessage('В списке нет серверов для обновления !');
+    exit;
+  end;
+ for n:=1 to form1.StringGrid1.RowCount-1 do
+    begin
+      if trim(form1.StringGrid1.Cells[0,n])='1' then flag:=true;
+    end;
+ if flag=false then
+   begin
+    showmessage('В списке не выбрано ни одного сервера для обновления !');
+    exit;
+   end;
+ flag:=false;
+ //for n:=1 to form1.StringGrid2.RowCount-1 do
+ //   begin
+ //     if trim(form1.StringGrid2.Cells[0,n])='1' then flag:=true;
+ //   end;
+ //if flag=false then
+ //  begin
+ //   showmessage('В списке не выбрано ни одной процедуры для обновления !');
+ //   exit;
+ //  end;
+
+ // --- СИНХРОНИЗИРУЕМ ХРАНИМКИ ---- ///
+
+   form1.auto_sync.Enabled:=false;
+   form1.Button1.Color:=clGray;
+   form1.Memo1.Clear;
+   form1.panel1.Visible:=true;
+   application.ProcessMessages;
+
+   // Цикл по обновлению серверов по порядку в GRID
+   form1.Label6.Caption:='';
+   for n:=1 to form1.StringGrid1.RowCount-1 do
+      begin
+        // Если IP и name base совпадают с ЦЕНТРАЛЬНЫМ то пропуск
+        if (trim(form1.StringGrid1.Cells[3,n])=trim(form1.edit1.Text)) and (trim(form1.StringGrid1.Cells[4,n])=trim(form1.edit5.Text)) then continue;
+
+        // Если сервер активен то обновляем
+        if trim(form1.StringGrid1.Cells[0,n])='1' then
+          begin
+            ConnectINI[4]:=trim(form1.StringGrid1.Cells[3,n]);
+            ConnectINI[5]:='5432';
+            ConnectINI[6]:=trim(form1.StringGrid1.Cells[4,n]);
+            ConnectINI[14]:=trim(form1.StringGrid1.Cells[1,n]);
+           form1.Label6.Caption:=' Обновляется сервер :'+#13+'               '+trim(ConnectINI[4])+':'+trim(ConnectINI[5])+#13+
+                                                            '               '+trim(ConnectINI[6])+' ['+trim(ConnectINI[14])+']';
+          form1.write_log('________________________________________________________________________');
+          form1.write_log('+++++++++++++++++++++++   '+inttostr(n)+'  +++++++++++++++++++++++++++++');
+          form1.write_log('№'+inttostr(n)+'  Обновляется сервер '+trim(form1.StringGrid1.Cells[2,n])+' ['+ConnectINI[14]+'] ip:'+ConnectINI[4]);
+
+            // Синхронизируем схранимые процедуры
+
+            for m:=1 to form1.StringGrid2.RowCount-1 do
+              begin
+                //showmessage(form1.StringGrid2.Cells[0,m]+' - '+trim(form1.StringGrid2.Cells[1,m]));
+                if trim(form1.StringGrid2.Cells[0,m])='1' then
+                 updproc(trim(form1.StringGrid2.Cells[1,m]),strtoint(trim(ConnectINI[14])));
+            //updproc('aflawless_dohod',strtoint(trim(ConnectINI[14])));
+              end;
+          end;
+      end;
+
+
+   application.ProcessMessages;
+
+   form1.Panel1.Visible:=false;
+   form1.Button1.Color:=clRed;
+   application.ProcessMessages;
+   form1.auto_sync.Enabled:=true;
+
+
+end;
+
+procedure TForm1.Button3Click(Sender: TObject);
+ var
+   n:integer;
+begin
+  for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+       form1.StringGrid1.Cells[0,n]:='0';
+     end;
+end;
+
+procedure TForm1.Button4Click(Sender: TObject);
+ var
+   n:integer;
+begin
+  for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+       form1.StringGrid1.Cells[0,n]:='1';
+     end;
+
+end;
+
+procedure TForm1.Button5Click(Sender: TObject);
+ var
+   n:integer;
+begin
+   // Снимаем ВСЕ
+   for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+       form1.StringGrid1.Cells[0,n]:='0';
+     end;
+  // УСТАНАВЛИВАЕМ РЕАЛЬНЫЕ
+  for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+       if trim(mas_serv_loc[n-1,8])='1' then  form1.StringGrid1.Cells[0,n]:='1';
+     end;
+end;
+
+procedure TForm1.Button6Click(Sender: TObject);
+ var
+   n:integer;
+begin
+   // Снимаем ВСЕ
+   for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+       form1.StringGrid1.Cells[0,n]:='0';
+     end;
+  // УСТАНАВЛИВАЕМ ВИРТУАЛЬНЫЕ
+  for n:=1 to form1.StringGrid1.RowCount-1 do
+     begin
+       if trim(mas_serv_loc[n-1,8])='0' then  form1.StringGrid1.Cells[0,n]:='1';
+     end;
+end;
+
+procedure TForm1.Button7Click(Sender: TObject);
+begin
+  form1.Update_grid;
+end;
+
+procedure TForm1.Button8Click(Sender: TObject);
+ var
+    n:integer;
+ begin
+    // Снимаем ВСЕ
+    for n:=1 to form1.StringGrid2.RowCount-1 do
+      begin
+        form1.StringGrid2.Cells[0,n]:='1';
+      end;
+end;
+
+procedure TForm1.Button9Click(Sender: TObject);
+ var
+    n:integer;
+ begin
+    // Устанавливаем ВСЕ
+    for n:=1 to form1.StringGrid2.RowCount-1 do
+      begin
+        form1.StringGrid2.Cells[0,n]:='0';
+      end;
+end;
+
+procedure TForm1.CheckBox1Change(Sender: TObject);
+begin
+  if form1.CheckBox1.Checked then form1.ZVDateTimePicker1.Enabled:=true else form1.ZVDateTimePicker1.Enabled:=false;
+end;
+
+procedure TForm1.BitBtn1Click(Sender: TObject);
+begin
+   write_settings(1);
+   write_settings(2);
+  showmessagealt('Данные сохранены :)');
+end;
+
+procedure TForm1.auto_syncTimer(Sender: TObject);
+begin
+  if form1.CheckBox1.Checked=false then exit;
+  //showmessage(timetostr(form1.ZVDateTimePicker1.Time));
+  If (strtotime('06:00')>time()) or (time()>form1.ZVDateTimePicker1.Time) then
+       form1.write_log('--------------|!| ТАЙМЕР СРАБОТАЛ |!|---------------');
+  if copy(timetostr(form1.ZVDateTimePicker1.Time),1,5)=copy(timetostr(Time()),1,5) then
+      begin
+        form1.write_log('--------------|!| Синхронизация НАЧАЛО авто |!|---------------');
+        form1.StartS();
+        end;
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+var
+  n:integer;
+begin
+if  ReadIniLocal(form1.IniPropStorage1,ExtractFilePath(Application.ExeName)+'local.ini')=false then
+   begin
+     showmessage('Не найден файл настроек по заданному пути!'+#13+'Дальнейшая загрузка программы невозможна !'+#13+'Обратитесь к Администратору !');
+     halt;
+   end;
+
+// Пишем лейбы центрального сервера
+form1.Edit1.Text:=connectini[1];
+form1.Edit2.Text:=connectini[2];
+form1.Edit5.Text:=connectini[3];
+
+  // Установки даты и времени
+ decimalseparator:='.';
+ DateSeparator := '.';
+ ShortDateFormat := 'dd.mm.yyyy';
+ LongDateFormat  := 'dd.mm.yyyy';
+ ShortTimeFormat := 'hh:mm:ss';
+ LongTimeFormat  := 'hh:mm:ss';
+
+ //Центруем форму и размер
+ Centrform(form1);
+
+ // Читаем и расставляем данные настроек
+ write_settings(0);
+ // Создаем список серверов
+ if form1.create_list_servers()=false then
+  begin
+    showmessagealt('Невозможно получить список серверов с центрального сервера !');
+    halt;
+  end;
+
+ // Создаем список хранимых процедур
+  if form1.create_list_proc()=false then
+   begin
+     showmessagealt('Невозможно получить список хранимых процедур с центрального сервера !');
+     halt;
+   end;
+
+
+
+// Обновляем GRID серверов
+form1.Update_grid;
+
+// Обновляем GRID хранимых процедур
+form1.Update_grid_proc;
+end;
+
+end.
+

@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <Version Value="11"/>
+    <BuildModes Active="Default"/>
+    <Units Count="10">
+      <Unit0>
+        <Filename Value="platsync.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos Y="17"/>
+        <UsageCount Value="201"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="main.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="Form1"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <TopLine Value="686"/>
+        <CursorPos X="29" Y="633"/>
+        <UsageCount Value="201"/>
+        <Bookmarks Count="2">
+          <Item0 Y="1163" ID="4"/>
+          <Item1 X="38" Y="1417"/>
+        </Bookmarks>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit1>
+      <Unit2>
+        <Filename Value="platproc.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="404"/>
+        <CursorPos X="10" Y="420"/>
+        <UsageCount Value="201"/>
+        <Loaded Value="True"/>
+      </Unit2>
+      <Unit3>
+        <Filename Value="sync_sprav.pas"/>
+        <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="4"/>
+        <TopLine Value="699"/>
+        <CursorPos X="18" Y="706"/>
+        <UsageCount Value="201"/>
+        <Bookmarks Count="3">
+          <Item0 X="6" Y="164" ID="1"/>
+          <Item1 X="12" Y="786" ID="2"/>
+          <Item2 X="6" Y="1090" ID="3"/>
+        </Bookmarks>
+        <Loaded Value="True"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="sync_proc.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="215"/>
+        <CursorPos X="21" Y="238"/>
+        <UsageCount Value="222"/>
+        <Loaded Value="True"/>
+      </Unit4>
+      <Unit5>
+        <Filename Value="auth.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="FormAuth"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="Auth"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="64"/>
+        <CursorPos X="20" Y="82"/>
+        <UsageCount Value="213"/>
+        <Loaded Value="True"/>
+      </Unit5>
+      <Unit6>
+        <Filename Value="../../egor/Документы/lazarus_install/ZEOSdbo7_1_4/src/dbc/ZDbcPostgreSqlUtils.pas"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="703"/>
+        <CursorPos X="43" Y="723"/>
+        <UsageCount Value="32"/>
+        <DefaultSyntaxHighlighter Value="Delphi"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="/usr/share/fpcsrc/rtl/objpas/sysutils/datih.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="111"/>
+        <CursorPos X="10" Y="131"/>
+        <UsageCount Value="20"/>
+      </Unit7>
+      <Unit8>
+        <Filename Value="../../egor/Документы/lazarus_install/ZEOSdbo7_1_4/src/component/ZAbstractConnection.pas"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="934"/>
+        <CursorPos X="22" Y="947"/>
+        <UsageCount Value="1"/>
+        <DefaultSyntaxHighlighter Value="Delphi"/>
+      </Unit8>
+      <Unit9>
+        <Filename Value="../../egor/Документы/lazarus_install/ZEOSdbo7_1_4/src/component/ZAbstractRODataset.pas"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1865"/>
+        <CursorPos Y="1880"/>
+        <UsageCount Value="10"/>
+        <DefaultSyntaxHighlighter Value="Delphi"/>
+      </Unit9>
+    </Units>
+    <JumpHistory Count="30" HistoryIndex="29">
+      <Position1>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="341" Column="24" TopLine="335"/>
+      </Position1>
+      <Position2>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="336" Column="25" TopLine="330"/>
+      </Position2>
+      <Position3>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="335" Column="25" TopLine="329"/>
+      </Position3>
+      <Position4>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="330" Column="15" TopLine="324"/>
+      </Position4>
+      <Position5>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="329" Column="15" TopLine="323"/>
+      </Position5>
+      <Position6>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="272" Column="32" TopLine="256"/>
+      </Position6>
+      <Position7>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="328" Column="23" TopLine="304"/>
+      </Position7>
+      <Position8>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="329" Column="23" TopLine="305"/>
+      </Position8>
+      <Position9>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="326" Column="24" TopLine="306"/>
+      </Position9>
+      <Position10>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="36" Column="36" TopLine="22"/>
+      </Position10>
+      <Position11>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="116" Column="24" TopLine="92"/>
+      </Position11>
+      <Position12>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="117" Column="24" TopLine="93"/>
+      </Position12>
+      <Position13>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="118" Column="24" TopLine="94"/>
+      </Position13>
+      <Position14>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="119" Column="38" TopLine="95"/>
+      </Position14>
+      <Position15>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="121" Column="27" TopLine="97"/>
+      </Position15>
+      <Position16>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="123" Column="122" TopLine="99"/>
+      </Position16>
+      <Position17>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="124" Column="23" TopLine="100"/>
+      </Position17>
+      <Position18>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="158" Column="83" TopLine="134"/>
+      </Position18>
+      <Position19>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="265" Column="67" TopLine="241"/>
+      </Position19>
+      <Position20>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="266" Column="94" TopLine="242"/>
+      </Position20>
+      <Position21>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="265" Column="28" TopLine="242"/>
+      </Position21>
+      <Position22>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="158" Column="75" TopLine="144"/>
+      </Position22>
+      <Position23>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="124" Column="15" TopLine="110"/>
+      </Position23>
+      <Position24>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="123" Column="114" TopLine="110"/>
+      </Position24>
+      <Position25>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="121" Column="19" TopLine="110"/>
+      </Position25>
+      <Position26>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="119" Column="30" TopLine="110"/>
+      </Position26>
+      <Position27>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="118" Column="16" TopLine="110"/>
+      </Position27>
+      <Position28>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="117" Column="16" TopLine="110"/>
+      </Position28>
+      <Position29>
+        <Filename Value="sync_proc.pas"/>
+        <Caret Line="25" Column="29" TopLine="13"/>
+      </Position29>
+      <Position30>
+        <Filename Value="sync_sprav.pas"/>
+        <Caret Line="700" Column="18" TopLine="687"/>
+      </Position30>
+    </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes Count="0" ActiveMode="default"/>
+    </RunParams>
+  </ProjectSession>
+  <Debugging>
+    <Watches Count="5">
+      <Item1>
+        <Expression Value="n"/>
+      </Item1>
+      <Item2>
+        <Expression Value="s1"/>
+      </Item2>
+      <Item3>
+        <Expression Value="s2"/>
+      </Item3>
+      <Item4>
+        <Expression Value="name_serv"/>
+      </Item4>
+      <Item5>
+        <Expression Value="tmp"/>
+      </Item5>
+    </Watches>
+  </Debugging>
+</CONFIG>
