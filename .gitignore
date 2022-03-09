@@ -6,5 +6,5 @@
 *.dbg
 *.txt
 *[0-9]
-#*/
+*/
 local*.ini
