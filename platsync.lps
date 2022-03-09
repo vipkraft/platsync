@@ -2,8 +2,8 @@
 <CONFIG>
   <ProjectSession>
     <Version Value="11"/>
-    <BuildModes Active="Default"/>
-    <Units Count="10">
+    <BuildModes Active="Debug"/>
+    <Units Count="11">
       <Unit0>
         <Filename Value="platsync.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -17,12 +17,13 @@
         <ComponentName Value="Form1"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <TopLine Value="482"/>
-        <CursorPos X="48" Y="487"/>
+        <IsVisibleTab Value="True"/>
+        <TopLine Value="335"/>
+        <CursorPos X="25" Y="344"/>
         <UsageCount Value="201"/>
         <Bookmarks Count="2">
-          <Item0 Y="1164" ID="4"/>
-          <Item1 X="38" Y="1418"/>
+          <Item0 Y="1371" ID="4"/>
+          <Item1 X="9" Y="1640"/>
         </Bookmarks>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
@@ -31,18 +32,17 @@
         <Filename Value="platproc.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="2"/>
-        <TopLine Value="404"/>
-        <CursorPos X="10" Y="420"/>
+        <TopLine Value="1443"/>
+        <CursorPos X="30" Y="1455"/>
         <UsageCount Value="201"/>
         <Loaded Value="True"/>
       </Unit2>
       <Unit3>
         <Filename Value="sync_sprav.pas"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="4"/>
-        <TopLine Value="1097"/>
-        <CursorPos X="51" Y="1112"/>
+        <TopLine Value="1168"/>
+        <CursorPos X="10" Y="1178"/>
         <UsageCount Value="201"/>
         <Bookmarks Count="3">
           <Item0 X="6" Y="164" ID="1"/>
@@ -68,8 +68,8 @@
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="Auth"/>
         <EditorIndex Value="1"/>
-        <TopLine Value="64"/>
-        <CursorPos X="26" Y="73"/>
+        <TopLine Value="432"/>
+        <CursorPos X="9" Y="443"/>
         <UsageCount Value="213"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
@@ -77,9 +77,9 @@
       <Unit6>
         <Filename Value="../../egor/Документы/lazarus_install/ZEOSdbo7_1_4/src/dbc/ZDbcPostgreSqlUtils.pas"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="703"/>
-        <CursorPos X="27" Y="725"/>
-        <UsageCount Value="27"/>
+        <TopLine Value="712"/>
+        <CursorPos X="19" Y="728"/>
+        <UsageCount Value="29"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit6>
       <Unit7>
@@ -87,14 +87,14 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="111"/>
         <CursorPos X="10" Y="131"/>
-        <UsageCount Value="15"/>
+        <UsageCount Value="12"/>
       </Unit7>
       <Unit8>
         <Filename Value="../../egor/Документы/lazarus_install/ZEOSdbo7_1_4/src/component/ZAbstractRODataset.pas"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="1865"/>
         <CursorPos Y="1880"/>
-        <UsageCount Value="5"/>
+        <UsageCount Value="10"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit8>
       <Unit9>
@@ -102,127 +102,134 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="744"/>
         <CursorPos X="32" Y="758"/>
-        <UsageCount Value="5"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
+        <UsageCount Value="2"/>
       </Unit9>
+      <Unit10>
+        <Filename Value="../lazarus/lcl/include/customform.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1906"/>
+        <CursorPos X="14" Y="1922"/>
+        <UsageCount Value="15"/>
+      </Unit10>
     </Units>
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="472" Column="66" TopLine="448"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="971" Column="17" TopLine="957"/>
       </Position1>
       <Position2>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="490" Column="41" TopLine="466"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="850" Column="31" TopLine="834"/>
       </Position2>
       <Position3>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="677" Column="57" TopLine="653"/>
+        <Filename Value="main.pas"/>
       </Position3>
       <Position4>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="678" Column="93" TopLine="654"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1259" Column="12" TopLine="1256"/>
       </Position4>
       <Position5>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="679" Column="41" TopLine="655"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1261" Column="14" TopLine="1243"/>
       </Position5>
       <Position6>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="680" Column="31" TopLine="656"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="970" Column="16" TopLine="951"/>
       </Position6>
       <Position7>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="717" Column="57" TopLine="693"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="2069" Column="30" TopLine="2055"/>
       </Position7>
       <Position8>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="730" Column="66" TopLine="706"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="970" Column="13" TopLine="954"/>
       </Position8>
       <Position9>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="813" Column="46" TopLine="789"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="973" Column="32" TopLine="957"/>
       </Position9>
       <Position10>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="867" Column="15" TopLine="843"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1265" Column="25" TopLine="930"/>
       </Position10>
       <Position11>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="993" Column="47" TopLine="969"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1266" Column="11" TopLine="1257"/>
       </Position11>
       <Position12>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1044" Column="53" TopLine="1020"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1653" Column="24" TopLine="1631"/>
       </Position12>
       <Position13>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1115" Column="46" TopLine="1091"/>
+        <Filename Value="main.pas"/>
       </Position13>
       <Position14>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1241" Column="47" TopLine="1217"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1482" Column="22" TopLine="1457"/>
       </Position14>
       <Position15>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1283" Column="45" TopLine="1269"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1659" Column="20" TopLine="1643"/>
       </Position15>
       <Position16>
         <Filename Value="main.pas"/>
-        <Caret Line="1394" Column="81" TopLine="1379"/>
+        <Caret Line="1626" Column="125" TopLine="1608"/>
       </Position16>
       <Position17>
         <Filename Value="main.pas"/>
-        <Caret Line="1328" Column="43" TopLine="1296"/>
+        <Caret Line="1633" Column="127" TopLine="1610"/>
       </Position17>
       <Position18>
         <Filename Value="main.pas"/>
+        <Caret Line="1626" Column="125" TopLine="1615"/>
       </Position18>
       <Position19>
         <Filename Value="main.pas"/>
-        <Caret Line="1073" Column="62" TopLine="1064"/>
+        <Caret Line="1631" Column="17" TopLine="1610"/>
       </Position19>
       <Position20>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="210" Column="36" TopLine="196"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="1627" Column="126" TopLine="1607"/>
       </Position20>
       <Position21>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="211" Column="56" TopLine="196"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="751" Column="30" TopLine="733"/>
       </Position21>
       <Position22>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="544" Column="77" TopLine="526"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="14" Column="43"/>
       </Position22>
       <Position23>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1459" Column="56" TopLine="1435"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="754" Column="34" TopLine="736"/>
       </Position23>
       <Position24>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1573" Column="23" TopLine="1555"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="2094" Column="10" TopLine="2081"/>
       </Position24>
       <Position25>
-        <Filename Value="sync_sprav.pas"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="868" Column="29" TopLine="852"/>
       </Position25>
       <Position26>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="262" Column="8" TopLine="256"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="2094" Column="8" TopLine="2076"/>
       </Position26>
       <Position27>
         <Filename Value="main.pas"/>
-        <Caret Line="487" Column="48" TopLine="482"/>
+        <Caret Line="880" Column="64" TopLine="867"/>
       </Position27>
       <Position28>
-        <Filename Value="auth.pas"/>
-        <Caret Line="73" Column="26" TopLine="64"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="191" Column="14" TopLine="178"/>
       </Position28>
       <Position29>
-        <Filename Value="sync_sprav.pas"/>
-        <Caret Line="1115" Column="25" TopLine="1106"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="972" Column="19" TopLine="953"/>
       </Position29>
       <Position30>
-        <Filename Value="sync_sprav.pas"/>
+        <Filename Value="main.pas"/>
+        <Caret Line="358" Column="18" TopLine="337"/>
       </Position30>
     </JumpHistory>
     <RunParams>

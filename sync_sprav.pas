@@ -1112,7 +1112,7 @@ form1.ZQuery2.SQL.Clear;
 form1.ZQuery2.SQL.Add('select sync_trip_virtual();');
 //form1.ZQuery2.SQL.Add('select sync_trip('+connectini[14]+');');
 //form1.write_log(form1.ZQuery2.SQL.Text);//$
-//showmessage(form1.ZQuery2.SQL.Text);
+//showmessage(form1.ZQuery2.SQL.Text);//$
 try
   form1.ZQuery2.open;
 except

@@ -12,6 +12,35 @@ object Form1: TForm1
   OnShow = FormShow
   Position = poScreenCenter
   LCLVersion = '2.0.8.0'
+  object BitBtn1: TBitBtn
+    AnchorSideLeft.Control = Button7
+    AnchorSideRight.Control = Button7
+    AnchorSideRight.Side = asrBottom
+    Left = 868
+    Height = 32
+    Top = 672
+    Width = 142
+    Anchors = [akLeft, akRight]
+    Caption = '&Save .ini'
+    Enabled = False
+    Kind = bkYes
+    ModalResult = 6
+    OnClick = BitBtn1Click
+    TabOrder = 6
+  end
+  object Button7: TButton
+    AnchorSideTop.Control = Splitter1
+    AnchorSideTop.Side = asrBottom
+    Left = 868
+    Height = 32
+    Top = 618
+    Width = 142
+    Anchors = [akTop]
+    Caption = 'Pick up from .ini'
+    OnClick = Button7Click
+    ParentFont = False
+    TabOrder = 4
+  end
   object Image1: TImage
     Left = 0
     Height = 45
@@ -332,6 +361,7 @@ object Form1: TForm1
         AutoSize = False
         OnChange = CheckBox1Change
         TabOrder = 1
+        Visible = False
       end
       object StringGrid1: TStringGrid
         AnchorSideLeft.Control = TabSheet1
@@ -448,6 +478,7 @@ object Form1: TForm1
         Width = 190
         Anchors = [akLeft, akRight]
         Caption = 'Check All'
+        Enabled = False
         OnClick = Button4Click
         ParentFont = False
         TabOrder = 5
@@ -462,6 +493,7 @@ object Form1: TForm1
         Width = 190
         Anchors = [akLeft, akRight]
         Caption = 'REAL all check'
+        Enabled = False
         OnClick = Button5Click
         ParentFont = False
         TabOrder = 6
@@ -476,6 +508,7 @@ object Form1: TForm1
         Width = 190
         Anchors = [akLeft, akRight]
         Caption = 'Virtual check all'
+        Enabled = False
         OnClick = Button6Click
         ParentFont = False
         TabOrder = 7
@@ -487,6 +520,7 @@ object Form1: TForm1
         Width = 71
         Caption = 'Auto sync at'
         ParentColor = False
+        Visible = False
         WordWrap = True
       end
       object GroupBox1: TGroupBox
@@ -614,6 +648,7 @@ object Form1: TForm1
         AutoSize = False
         OnChange = CheckBox2Change
         TabOrder = 9
+        Visible = False
       end
       object Label12: TLabel
         Left = 42
@@ -622,6 +657,7 @@ object Form1: TForm1
         Width = 73
         Caption = 'Manual sync'
         ParentColor = False
+        Visible = False
         WordWrap = True
       end
       object GroupBox2: TGroupBox
@@ -760,11 +796,13 @@ object Form1: TForm1
           Top = 174
           Width = 112
           Caption = 'язык русский'
+          Checked = True
           OnChange = CheckBox3Change
+          State = cbChecked
           TabOrder = 0
         end
         object CheckBox4: TCheckBox
-          Left = 6
+          Left = 7
           Height = 21
           Top = 96
           Width = 91
@@ -780,6 +818,7 @@ object Form1: TForm1
           Top = 137
           Width = 91
           Caption = 'CheckBox5'
+          Enabled = False
           TabOrder = 2
         end
         object Label1: TLabel
@@ -808,6 +847,7 @@ object Form1: TForm1
           Top = 6
           Width = 91
           Caption = 'Checkbox6'
+          Enabled = False
           OnChange = CheckBox6Change
           TabOrder = 3
         end
@@ -817,6 +857,7 @@ object Form1: TForm1
           Top = 70
           Width = 201
           Caption = 'только удалять дубликаты'
+          Enabled = False
           OnChange = CheckBox7Change
           TabOrder = 4
         end
@@ -866,15 +907,25 @@ object Form1: TForm1
           Top = 37
           Width = 91
           Caption = 'CheckBox8'
+          Enabled = False
           OnChange = CheckBox8Change
           TabOrder = 5
         end
+      end
+      object Label19: TLabel
+        Left = 811
+        Height = 15
+        Top = 8
+        Width = 37
+        Caption = 'My ip: '
+        ParentColor = False
       end
     end
     object TabSheet2: TTabSheet
       Caption = '                    Func & Proc Sync                  '
       ClientHeight = 533
       ClientWidth = 1016
+      Enabled = False
       object Button2: TButton
         Left = 367
         Height = 31
@@ -1027,49 +1078,6 @@ object Form1: TForm1
     Align = alNone
     Anchors = []
     ResizeAnchor = akTop
-  end
-  object BitBtn3: TBitBtn
-    AnchorSideLeft.Side = asrBottom
-    AnchorSideRight.Control = TabSheet1
-    AnchorSideRight.Side = asrBottom
-    Left = 880
-    Height = 30
-    Top = 720
-    Width = 120
-    Anchors = []
-    BorderSpacing.Left = 30
-    BorderSpacing.Right = 25
-    Caption = '&Exit'
-    Kind = bkAbort
-    ModalResult = 3
-    OnClick = BitBtn2Click
-    TabOrder = 4
-  end
-  object Button7: TButton
-    Left = 868
-    Height = 30
-    Top = 624
-    Width = 142
-    Anchors = []
-    Caption = 'Pick up from .ini'
-    OnClick = Button7Click
-    ParentFont = False
-    TabOrder = 5
-  end
-  object BitBtn1: TBitBtn
-    AnchorSideLeft.Control = Label10
-    AnchorSideLeft.Side = asrBottom
-    Left = 868
-    Height = 30
-    Top = 670
-    Width = 142
-    Anchors = []
-    Caption = '&Save .ini'
-    Default = True
-    Kind = bkYes
-    ModalResult = 6
-    OnClick = BitBtn1Click
-    TabOrder = 6
   end
   object Panel1: TPanel
     AnchorSideLeft.Control = Owner
@@ -2154,6 +2162,21 @@ object Form1: TForm1
       Stretch = True
       Visible = False
     end
+  end
+  object BitBtn3: TBitBtn
+    AnchorSideLeft.Control = Button7
+    AnchorSideRight.Control = Button7
+    AnchorSideRight.Side = asrBottom
+    Left = 868
+    Height = 32
+    Top = 728
+    Width = 142
+    Anchors = [akLeft, akRight]
+    Caption = '&Exit'
+    Kind = bkAbort
+    ModalResult = 3
+    OnClick = BitBtn2Click
+    TabOrder = 3
   end
   object clock_timer: TTimer
     Interval = 50

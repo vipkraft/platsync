@@ -11,7 +11,7 @@ uses
   //lclproc,
   LazUtf8,
   version_info,
-  sync_sprav, sync_proc, auth, Types;
+  sync_sprav, sync_proc, auth, Types, math;
 
 
 type
@@ -64,6 +64,7 @@ type
     Label16: TLabel;
     Label17: TLabel;
     Label18: TLabel;
+    Label19: TLabel;
     Label2: TLabel;
     Label3: TLabel;
     Label4: TLabel;
@@ -152,6 +153,11 @@ type
     //проверка необходимости в обновлении сервера
     function syncNeedCheck(idpoint:string; period:string):string;
     function syncFailsTry(idpoint:string):boolean;
+    function getvalidip():boolean;
+    function logs_check_first(): boolean;  //журнал проверка запись запуска
+    function logs_sync_start(idserv: string): string;  //журнал запись старта синхры
+    //журнал запись результата
+    procedure logs_sync_result(idserv: string; stamp: string; startline: integer);
   private
     { private declarations }
   public
@@ -161,7 +167,7 @@ type
 const
    timeout_signal=300; //предудпреждение перед закрытием
    mas_serv_size =10;
-   intervalTime = 5; //интервал запрета синхры
+   intervalTime = 10; //интервал запрета синхры
 
 var
   Form1: TForm1;
@@ -176,11 +182,13 @@ var
   superuser: boolean=true;
   oppgroup: boolean = false;
   oppUsers: string = '5,9,11,14,115,410,70';
-  oppServers:string = '381,5,814';
+  oppServers:string = '381,814';
   serversOmitted: string = '381';
-  intervalOpp: integer = 30;
+  intervalOpp: integer = 15;
   flagexit:boolean = false;
-  flagSync:boolean = false;
+  flagSync:boolean = false; //флаг работы синхронизации
+  flagtimer:boolean =false;  //запустить таймер автообновления
+  fllog:boolean = false; //вести журнал
 
   mas_serv_loc:array of array of string; //массив серверов для обновления
   // mas_serv_loc[n,0] - id_point
@@ -210,6 +218,202 @@ implementation
 {$R *.lfm}
 
 { TForm1 }
+
+//журнал запись результата
+procedure TForm1.logs_sync_result(idserv: string; stamp: string; startline: integer);
+ var
+  n:integer;
+   //S: TMemoryStream;
+begin
+  //S:=TMemoryStream.Create;
+
+  with form1 do
+      begin
+  // Подключаемся к центральному серверу
+  If not(Connect2(form1.Zconnection1, 1)) then
+     begin
+       write_log('[Журнал синхронизации]: Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ -k11-');
+       exit;
+     end;
+
+   //запись в базу и получение штампа времени
+    ZQuery1.SQL.Clear;
+    ZQuery1.SQL.Add('UPDATE av_update_detail set sync_end=current_timestamp, logs=');
+    ZQuery1.SQL.Add('E'+quotedstr(Memo1.Lines[startline])+quotedstr('\n'));
+    for n:=startline+1 to Memo1.Lines.Count-1 do
+       //for n:=1 to 5 do
+     begin
+      ZQuery1.SQL.Add(quotedstr(Memo1.Lines[n])+quotedstr('\n'));
+      end;
+    //form1.Memo1.Lines.savetostream(s);
+    //s.Seek(0, soFromBeginning);
+    //ZQuery1.sql.LoadFromStream(s);
+    ZQuery1.SQL.Add(' where sync_start= '+quotedstr(stamp) +';');
+     //showmessage(form1.ZQuery1.SQL.Text); //$
+    try
+     ZQuery1.ExecSQL;
+       except
+          //s.free;
+      form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      write_log('[Журнал синхронизации]: !!! ОШИБКА ЗАПРОСА -k-');
+      exit;
+     end;
+
+     //s.free;
+     form1.ZQuery1.Close;
+     form1.ZConnection1.Disconnect;
+
+   end;
+end;
+
+
+//журнал запись старта синхры
+function TForm1.logs_sync_start(idserv: string): string;  // true - успех
+ var
+  n:integer;
+begin
+  result:='';
+  with form1 do
+      begin
+  // Подключаемся к центральному серверу
+  If not(Connect2(form1.Zconnection1, 1)) then
+     begin
+       write_log('[Журнал синхронизации]: Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ -k11-');
+       exit;
+     end;
+    //======================Открываем транзакцию
+      try
+        If not Zconnection1.InTransaction then
+           Zconnection1.StartTransaction
+        else
+          begin
+                     form1.write_log('!!!12 ОСТАНОВКА   Незавершенная транзакция -k-');
+                     //application.ProcessMessages;
+                     ZConnection1.Rollback;
+                     Zconnection1.disconnect;
+                     exit;
+            end;
+   //запись в базу и получение штампа времени
+   form1.ZQuery1.SQL.Clear;
+   form1.ZQuery1.SQL.Add('INSERT INTO av_update_detail(id_user,id_server) VALUES ( '+inttostr(id_user)+','+idserv
+    +') returning to_char(sync_start, ''YYYY-MM-DD HH24:MI:SS.US'');');
+   //showmessage(form1.ZQuery1.SQL.Text); //$
+   ZQuery1.open;
+   if form1.ZQuery1.RecordCount>0 then
+        begin
+         result:=ZQuery1.Fields[0].asString;
+        end;
+
+   form1.Zconnection1.Commit;
+    except
+       form1.ZConnection1.Rollback;
+        form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      write_log('[Журнал синхронизации]: !!! ОШИБКА ЗАПРОСА -k-');
+      exit;
+     end;
+     form1.ZQuery1.Close;
+     form1.ZConnection1.Disconnect;
+   end;
+end;
+
+
+// Проверить логи
+function TForm1.logs_check_first(): boolean;  // true - успех
+ var
+  n:integer;
+begin
+  result:=false;
+  with form1.ZQuery1, form1.Zconnection1 do
+      begin
+  // Подключаемся к центральному серверу
+  If not(Connect2(form1.Zconnection1, 1)) then
+     begin
+       write_log('[Журнал синхронизации] '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ -k11-');
+       exit;
+     end;
+
+  //
+   form1.ZQuery1.SQL.Clear;
+   form1.ZQuery1.SQL.Add('select ipaddr, id_user, id_server, to_char(sync_start, ''DD-MM HH24:MI:SS'') as stamp '
+     +',(select btrim(name) from av_spr_point where id=a.id_server and del=0 order by createdate desc limit 1) as pname '
+     +',(select btrim(b.name) from av_users b where b.id=a.id_user order by b.del asc, b.createdate desc limit 1) as username '
+     +' from av_update_detail a where id_server<>0 order by sync_start desc limit 1;');
+
+   //showmessage(form1.ZQuery1.SQL.Text);
+   try
+     open;
+     except
+      form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      write_log('[Журнал синхронизации]: !!! ОШИБКА ЗАПРОСА -k-');
+      exit;
+     end;
+
+      if form1.ZQuery1.RecordCount>0 then
+        begin
+         write_log('Последнее обновление: '+FieldByName('stamp').asString +'| ['+FieldByName('id_server').asString+'] '+FieldByName('pname').asString
+                 +' | ['+FieldByName('id_user').asString+'] '+FieldByName('username').asString
+                  + ' | '+ FieldByName('ipaddr').asString );
+        end;
+   //запись в базу
+   if not superuser then
+    begin
+   form1.ZQuery1.SQL.Clear;
+   form1.ZQuery1.SQL.Add('INSERT INTO av_update_detail(id_user) VALUES ( '+inttostr(id_user)+')');
+    try
+     ExecSQL;
+       except
+      form1.ZQuery1.Close;
+      form1.Zconnection1.disconnect;
+      write_log('[Журнал синхронизации]: !!! ОШИБКА ЗАПРОСА -k-');
+      exit;
+     end;
+    end;
+     form1.ZQuery1.Close;
+     form1.ZConnection1.Disconnect;
+     result:=true;
+
+   end;
+end;
+
+
+//определить адрес и возможность синхронизации по таймеру
+function TForm1.getValidIp():boolean;
+begin
+ result:=false;
+ // Подключаемся к центральному серверу
+ If not(Connect2(form1.Zconnection1, 1)) then
+    begin
+      write_log('[Проверка сервера на блокировку]: Центральный сервер: '+trim(form1.Edit1.Text)+':'+trim(form1.Edit2.Text)+' - НЕТ СОЕДИНЕНИЯ -k01-');
+      exit;
+    end;
+
+  form1.ZQuery1.SQL.Clear;
+ form1.ZQuery1.SQL.add('select to_char(now(),'+quotedstr('dd.mm.yyyy hh24:mi:ss')+
+    ') as date, host(inet_client_addr()), cast(split_part(host(inet_client_addr()),''.'',4) as integer) as mine;');
+// form1.memo1.Lines.AddStrings(ZQ.sql);
+ try
+   form1.ZQuery1.open;
+ except
+   form1.ZQuery1.Close;
+   form1.Zconnection1.disconnect;
+   exit;
+ end;
+ if form1.ZQuery1.RecordCount>0 then
+  begin
+  //Tek_datetime:=;
+  form1.Label19.caption := 'мой адрес IP: ' + form1.ZQuery1.FieldByName('host').asString;
+  //можно включать таймер автообновления если ip < 12
+  Result := form1.ZQuery1.FieldByName('mine').asInteger < 12;
+
+  end;
+   form1.ZQuery1.Close;
+   form1.Zconnection1.disconnect;
+   exit;
+
+ end;
 
 //проверка сервера на блокировку
 function TForm1.lock_check():boolean;
@@ -292,7 +496,6 @@ begin
    form1.BitBtn1.Enabled:=true;
    form1.GroupBox3.Enabled:=true;
    tabsheet1.Enabled:=true;
-   tabsheet2.Enabled:=true;
    form1.Panel1.Visible:=false;
    form1.Button1.Color:=clRed;
    form1.auto_sync.Enabled:=true;
@@ -396,7 +599,7 @@ begin
         //form1.write_log(form1.ZQuery1.SQL.Text);//$
         form1.ZQuery1.open;
        except
-        form1.write_log('!!!3 ОСТАНОВКА  НЕВОЗМОЖНО СОЗДАТЬ ЗАПИСЬ ЖУРАНАЛА СИНХРОНИЗАЦИИ на ЦС !-k05-');
+        form1.write_log('!!!3 ОСТАНОВКА  НЕВОЗМОЖНО СОЗДАТЬ ЗАПИСЬ ЖУРНАЛА СИНХРОНИЗАЦИИ на ЦС !-k05-');
         form1.ZQuery1.Close;
         exit;
        end;
@@ -542,8 +745,8 @@ begin
       IniSection:='PERMITIONS'; //указываем секцию
         serversOmitted:=  ReadString('servers omitted',serversOmitted);
         oppUsers:=   ReadString('opp users',oppUsers);
-        oppServers:=  ReadString('opp servers omitted',oppServers);
-        intervalOpp:=  abs(ReadInteger('opp interval', intervalOpp));
+        oppServers:= oppServers +','+ ReadString('opp servers omitted',oppServers);
+        intervalOpp:=  math.Max(intervalOpp, abs(ReadInteger('opp interval', intervalOpp)));
 
         if oppServers='' then oppServers:='0';
         if serversOmitted='' then serversOmitted:='0';
@@ -687,6 +890,8 @@ for n:=0 to length(mas_serv_loc)-1 do
    form1.StringGrid1.Row := nrow;
 end;
 
+
+
 // Создание списка обновляемых серверов
 function TForm1.create_list_servers(flcheck:boolean): boolean;  // true - успех
  var
@@ -764,7 +969,8 @@ begin
           mas_serv_loc[length(mas_serv_loc)-1,7]:='0';
 
        //отметка, что сервер выбран
-       if (not flcheck and oppgroup) or not oppgroup then
+       //if (not flcheck and oppgroup) or not oppgroup then
+       if flcheck then
            if select_servers(mas_serv_loc[length(mas_serv_loc)-1,0]) then
               mas_serv_loc[length(mas_serv_loc)-1,7]:='1';
 
@@ -1053,10 +1259,11 @@ end;
 procedure TForm1.Button1Click(Sender: TObject);
 begin
 
-   form1.save_checked_servers();
+    form1.save_checked_servers();
    // актуализируем сервера и их последнее успешной обновление
     if form1.create_list_servers(true) then
       form1.Update_grid();
+    //exit;
    //процедура обновления
    form1.StartS(false);
     // обновляем список серверов
@@ -1258,9 +1465,11 @@ procedure TForm1.StartS(modeAuto:boolean);
   n:integer;
   gotit:boolean; //флаг отметки сервера на обновление
   doit: boolean;
-  timecheck: string;
+  timecheck, stamptime: string;
   //stampdone: Tdatetime;
+  mlines: integer;//кол-во строк мемо на начало следующего сервера
 begin
+ mlines := 0;
   flagExit:=false;
   flagSync:=true;
    //form1.auto_sync.Enabled:=false;
@@ -1274,7 +1483,6 @@ begin
    form1.BitBtn1.Enabled:=false;
    form1.GroupBox3.Enabled:=false;
    tabsheet1.Enabled:=false;
-   tabsheet2.Enabled:=false;
    form1.Memo1.Clear;
    form1.panel1.Visible:=true;
    application.ProcessMessages;
@@ -1289,7 +1497,7 @@ begin
    // Цикл по обновлению серверов по порядку в GRID
    form1.Label6.Caption:='';
 
-   //обновление в РУЧНОМ режиме
+   //обновление в РУЧНОМ режиме (недоступно ОПП)
    If form1.CheckBox2.Checked then
     begin
       // Если IP и name base совпадают с ЦЕНТРАЛЬНЫМ то пропуск
@@ -1357,11 +1565,16 @@ begin
 
    for n:=1 to form1.StringGrid1.RowCount-1 do
       begin
+
+       if mlines > form1.Memo1.Lines.Count then
+           mlines := 0;
         if flagExit then
          begin
            write_log('ЭКСТРЕННЫЙ ВЫХОД !-!-!');
           break;
          end;
+
+       stamptime :='';
           //stampDone := strtoDatetime('1970-01-01 01:01');
         // Если IP и name base совпадают с ЦЕНТРАЛЬНЫМ то пропуск
         if (trim(form1.StringGrid1.Cells[3,n])=trim(form1.edit1.Text)) and (trim(form1.StringGrid1.Cells[4,n])=trim(form1.edit5.Text)) then
@@ -1370,8 +1583,8 @@ begin
          continue;
          end;
         // Если сервер активен то обновляем
-
-
+  //if n>22 then
+     //showmessage(trim(form1.StringGrid1.Cells[2,n]));
         if (trim(form1.StringGrid1.Cells[0,n])<>'1') then
          if oppgroup or not modeAuto then
           continue;
@@ -1392,8 +1605,10 @@ begin
             form1.write_log('******************************< '+inttostr(n)+' >***********************************');
             //form1.write_log('Обновляется сервер:  '+trim(ConnectINI[4])+'  '+trim(ConnectINI[6])+' ['+trim(ConnectINI[14])+']');
             form1.write_log('Обновляется сервер '+trim(form1.StringGrid1.Cells[2,n])+' ['+ConnectINI[14]+'] ip:'+ConnectINI[4]);
-            // Синхронизируем справочники и Создаем локальные списки расписаний
 
+         //если вести журнал
+          if fllog then
+            stamptime := form1.logs_sync_start(ConnectINI[14]);
         doit:=true;
 
          if modeAuto then
@@ -1408,16 +1623,21 @@ begin
          end;
          if doit  then
           begin
-            if (form1.syncNeedCheck(ConnectINI[14], inttostr(intervalTime)+' minutes ') <> '01-01-1970 00:00') then
+              if doit and oppgroup and (form1.syncNeedCheck(ConnectINI[14], inttostr(intervalOpp)+' minutes ') <> '01-01-1970 00:00') then
+            begin
+             write_log('['+ConnectINI[14]+'] пункт уже был обновлен за последние '+inttostr(intervalOpp)+ ' минут !');
+              if not modeAuto then
+              showmessage('['+ConnectINI[14]+'] пункт уже был обновлен за последние '+inttostr(intervalOpp)+ ' минут !');
+             doit:=false;
+            end;
+            if doit and (form1.syncNeedCheck(ConnectINI[14], inttostr(intervalTime)+' minutes ') <> '01-01-1970 00:00') then
              begin
              write_log('['+ConnectINI[14]+'] сервер уже был обновлен за последние '+inttostr(intervalTime)+ ' минут !');
+            if not modeAuto then
+             showmessage('['+ConnectINI[14]+'] сервер уже был обновлен за последние '+inttostr(intervalTime)+ ' минут !');
              doit:=false;
              end;
-            if doit and oppgroup and (form1.syncNeedCheck(ConnectINI[14], inttostr(intervalOpp)+' minutes ') <> '01-01-1970 00:00') then
-           begin
-             write_log('['+ConnectINI[14]+'] пункт уже был обновлен за последние '+inttostr(intervalOpp)+ ' минут !');
-             doit:=false;
-           end;
+
           end;
 
        //далее считаем попытки обновления
@@ -1431,6 +1651,7 @@ begin
         end;
       if not modeAuto and superuser then doit:=true;
 
+      // Синхронизируем справочники и Создаем локальные списки расписаний
       if doit then
             begin
             //определяем реальный или нет
@@ -1439,6 +1660,11 @@ begin
            else
             syncOperation(ConnectINI[14],false);
          end;
+
+      //если вести журнал, запись результата
+       if fllog then
+           form1.logs_sync_result(ConnectINI[14], stamptime, mlines);
+       mlines := form1.Memo1.Lines.Count;
      end;
    end;
    //если не было отмечено ни одного сервера, тогда обновлять из local.ini
@@ -1798,7 +2024,7 @@ if  ReadIniLocal(form1.IniPropStorage1,ExtractFilePath(Application.ExeName)+'loc
      halt;
    end;
 
-id_user := 1;
+id_user := 5;
 superuser :=true;
 
 If not FileExistsUTF8(ExtractFilePath(Application.ExeName)+'cheater') then
@@ -1831,18 +2057,30 @@ form1.Edit2.Text:=connectini[2];
 form1.Edit5.Text:=connectini[3];
 
   // Установки даты и времени
- decimalseparator:='.';
- DateSeparator := '.';
- ShortDateFormat := 'dd.mm.yyyy';
- LongDateFormat  := 'dd.mm.yyyy';
- ShortTimeFormat := 'hh:mm:ss';
- LongTimeFormat  := 'hh:mm:ss';
+ //decimalseparator:='.';
+ //DateSeparator := '.';
+ //ShortDateFormat := 'dd.mm.yyyy';
+ //LongDateFormat  := 'dd.mm.yyyy';
+ //ShortTimeFormat := 'hh:mm:ss';
+ //LongTimeFormat  := 'hh:mm:ss';
 
 
  // Читаем и расставляем данные настроек
  write_settings(0);
- // Создаем список серверов
- if form1.create_list_servers(true)=false then
+
+ fllog := logs_check_first();
+ if not fllog  then
+ begin
+      //если кто-то из оПП, то без логов нельзя
+   if oppgroup then
+    begin
+       showmessage('Ошибка запроса к истории обновлений!'+#13+'Дальнейшая работа невозможна!'+#13+'Обратитесь к администратору...');
+       halt;
+     end;
+   end;
+
+  // Создаем список серверов
+ if form1.create_list_servers(false)=false then
   begin
     write_log('Невозможно получить список серверов с центрального сервера !');
     halt;
@@ -1861,49 +2099,60 @@ form1.Update_grid;
 
 // Обновляем GRID хранимых процедур
 if superuser then
+begin
 form1.Update_grid_proc;
+end;
+
+//флаг включения таймера автообновлений
+//Определяем ip-адрес
+flagtimer := form1.getvalidip();
+
+//если айпишник сервака (включен таймер автообновления), тогда не вести журнал
+if fllog then
+  if (flagtimer) then
+    fllog := false;
 
 //включаем таймер
-if not oppgroup then
+if not oppgroup and not flagtimer then
   form1.auto_sync.Enabled:=true;
 end;
 
 
 procedure TForm1.FormShow(Sender: TObject);
 begin
+ // запрещено все, если ты не суперюзер, не сервер, опп-шник
+if not oppgroup OR superuser OR flagtimer then
+ begin
+  form1.CheckBox1.visible:=true;
+  form1.Label2.visible:=true;
+  form1.Button4.Enabled:=true;
+  form1.Button5.Enabled:=true;
+  form1.Button6.Enabled:=true;
+  form1.BitBtn1.Enabled:=true;
+ end;
 
-   // запрещаем творить тварям
- if not superuser then
+if not oppgroup and flagtimer then
+  Form1.CheckBox1.Checked:=true;
+
+if superuser then
   begin
-    form1.CheckBox6.Enabled:=false;
-    form1.Label17.Enabled:=false;
-    form1.CheckBox7.Enabled:=false;
-    form1.Label18.Enabled:=false;
-    form1.CheckBox8.Enabled:=false;
-    form1.TabSheet2.Enabled:=false;
-
+   form1.CheckBox2.visible:=true;
+    form1.Label12.visible:=true;
+    form1.CheckBox6.Enabled:=true;
+    form1.CheckBox3.checked:=false;
+    form1.CheckBox7.Enabled:=true;
+    form1.CheckBox8.Enabled:=true;
+    form1.TabSheet2.enabled:=true;
   end;
 
 
- Form1.CheckBox1.Checked:=true;
-
-if oppgroup and not superuser then
- begin
-  form1.CheckBox1.Checked:=false;
-  form1.CheckBox1.enabled:=false;
-  form1.CheckBox2.enabled:=false;
-  form1.Label12.Enabled:=false;
-  form1.Button4.Enabled:=false;
-  form1.Button5.Enabled:=false;
-  form1.Button6.Enabled:=false;
-  form1.BitBtn1.Enabled:=false;
- end;
-  //язык интерфейса
+//язык интерфейса
   form1.change_interface();
 
   // Устанавливаем фокус страницы
   form1.PageControl1.ActivePageIndex:=0;
   form1.Button1.SetFocus;
+  application.ProcessMessages;
 
 end;
 
