@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectSession>
-    <Version Value="11"/>
+    <Version Value="12"/>
     <BuildModes Active="Debug"/>
     <Units Count="11">
       <Unit0>
         <Filename Value="platsync.lpr"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="-1"/>
-        <CursorPos Y="17"/>
+        <EditorIndex Value="3"/>
+        <CursorPos X="7" Y="17"/>
         <UsageCount Value="201"/>
+        <Loaded Value="True"/>
       </Unit0>
       <Unit1>
         <Filename Value="main.pas"/>
@@ -17,9 +18,8 @@
         <ComponentName Value="Form1"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <IsVisibleTab Value="True"/>
-        <TopLine Value="335"/>
-        <CursorPos X="25" Y="344"/>
+        <TopLine Value="2009"/>
+        <CursorPos X="18" Y="2019"/>
         <UsageCount Value="201"/>
         <Bookmarks Count="2">
           <Item0 Y="1371" ID="4"/>
@@ -40,7 +40,7 @@
       <Unit3>
         <Filename Value="sync_sprav.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="4"/>
+        <EditorIndex Value="5"/>
         <TopLine Value="1168"/>
         <CursorPos X="10" Y="1178"/>
         <UsageCount Value="201"/>
@@ -54,7 +54,7 @@
       <Unit4>
         <Filename Value="sync_proc.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="4"/>
         <TopLine Value="215"/>
         <CursorPos X="21" Y="238"/>
         <UsageCount Value="222"/>
@@ -67,9 +67,10 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="Auth"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <TopLine Value="432"/>
-        <CursorPos X="9" Y="443"/>
+        <CursorPos X="66" Y="453"/>
         <UsageCount Value="213"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
@@ -80,7 +81,6 @@
         <TopLine Value="712"/>
         <CursorPos X="19" Y="728"/>
         <UsageCount Value="29"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit6>
       <Unit7>
         <Filename Value="/usr/share/fpcsrc/rtl/objpas/sysutils/datih.inc"/>
@@ -95,7 +95,6 @@
         <TopLine Value="1865"/>
         <CursorPos Y="1880"/>
         <UsageCount Value="10"/>
-        <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit8>
       <Unit9>
         <Filename Value="../../egor/lazarus164/ccr/zeos/7.1.4/src/component/ZAbstractRODataset.pas"/>
@@ -115,145 +114,145 @@
     <JumpHistory Count="30" HistoryIndex="29">
       <Position1>
         <Filename Value="main.pas"/>
-        <Caret Line="971" Column="17" TopLine="957"/>
+        <Caret Line="850" Column="31" TopLine="834"/>
       </Position1>
       <Position2>
         <Filename Value="main.pas"/>
-        <Caret Line="850" Column="31" TopLine="834"/>
       </Position2>
       <Position3>
         <Filename Value="main.pas"/>
+        <Caret Line="1259" Column="12" TopLine="1256"/>
       </Position3>
       <Position4>
         <Filename Value="main.pas"/>
-        <Caret Line="1259" Column="12" TopLine="1256"/>
+        <Caret Line="1261" Column="14" TopLine="1243"/>
       </Position4>
       <Position5>
         <Filename Value="main.pas"/>
-        <Caret Line="1261" Column="14" TopLine="1243"/>
+        <Caret Line="970" Column="16" TopLine="951"/>
       </Position5>
       <Position6>
         <Filename Value="main.pas"/>
-        <Caret Line="970" Column="16" TopLine="951"/>
+        <Caret Line="2069" Column="30" TopLine="2055"/>
       </Position6>
       <Position7>
         <Filename Value="main.pas"/>
-        <Caret Line="2069" Column="30" TopLine="2055"/>
+        <Caret Line="970" Column="13" TopLine="954"/>
       </Position7>
       <Position8>
         <Filename Value="main.pas"/>
-        <Caret Line="970" Column="13" TopLine="954"/>
+        <Caret Line="973" Column="32" TopLine="957"/>
       </Position8>
       <Position9>
         <Filename Value="main.pas"/>
-        <Caret Line="973" Column="32" TopLine="957"/>
+        <Caret Line="1265" Column="25" TopLine="930"/>
       </Position9>
       <Position10>
         <Filename Value="main.pas"/>
-        <Caret Line="1265" Column="25" TopLine="930"/>
+        <Caret Line="1266" Column="11" TopLine="1257"/>
       </Position10>
       <Position11>
         <Filename Value="main.pas"/>
-        <Caret Line="1266" Column="11" TopLine="1257"/>
+        <Caret Line="1653" Column="24" TopLine="1631"/>
       </Position11>
       <Position12>
         <Filename Value="main.pas"/>
-        <Caret Line="1653" Column="24" TopLine="1631"/>
       </Position12>
       <Position13>
         <Filename Value="main.pas"/>
+        <Caret Line="1482" Column="22" TopLine="1457"/>
       </Position13>
       <Position14>
         <Filename Value="main.pas"/>
-        <Caret Line="1482" Column="22" TopLine="1457"/>
+        <Caret Line="1659" Column="20" TopLine="1643"/>
       </Position14>
       <Position15>
         <Filename Value="main.pas"/>
-        <Caret Line="1659" Column="20" TopLine="1643"/>
+        <Caret Line="1626" Column="125" TopLine="1608"/>
       </Position15>
       <Position16>
         <Filename Value="main.pas"/>
-        <Caret Line="1626" Column="125" TopLine="1608"/>
+        <Caret Line="1633" Column="127" TopLine="1610"/>
       </Position16>
       <Position17>
         <Filename Value="main.pas"/>
-        <Caret Line="1633" Column="127" TopLine="1610"/>
+        <Caret Line="1626" Column="125" TopLine="1615"/>
       </Position17>
       <Position18>
         <Filename Value="main.pas"/>
-        <Caret Line="1626" Column="125" TopLine="1615"/>
+        <Caret Line="1631" Column="17" TopLine="1610"/>
       </Position18>
       <Position19>
         <Filename Value="main.pas"/>
-        <Caret Line="1631" Column="17" TopLine="1610"/>
+        <Caret Line="1627" Column="126" TopLine="1607"/>
       </Position19>
       <Position20>
         <Filename Value="main.pas"/>
-        <Caret Line="1627" Column="126" TopLine="1607"/>
+        <Caret Line="751" Column="30" TopLine="733"/>
       </Position20>
       <Position21>
         <Filename Value="main.pas"/>
-        <Caret Line="751" Column="30" TopLine="733"/>
+        <Caret Line="14" Column="43"/>
       </Position21>
       <Position22>
         <Filename Value="main.pas"/>
-        <Caret Line="14" Column="43"/>
+        <Caret Line="754" Column="34" TopLine="736"/>
       </Position22>
       <Position23>
         <Filename Value="main.pas"/>
-        <Caret Line="754" Column="34" TopLine="736"/>
+        <Caret Line="2094" Column="10" TopLine="2081"/>
       </Position23>
       <Position24>
         <Filename Value="main.pas"/>
-        <Caret Line="2094" Column="10" TopLine="2081"/>
+        <Caret Line="868" Column="29" TopLine="852"/>
       </Position24>
       <Position25>
         <Filename Value="main.pas"/>
-        <Caret Line="868" Column="29" TopLine="852"/>
+        <Caret Line="2094" Column="8" TopLine="2076"/>
       </Position25>
       <Position26>
         <Filename Value="main.pas"/>
-        <Caret Line="2094" Column="8" TopLine="2076"/>
+        <Caret Line="880" Column="64" TopLine="867"/>
       </Position26>
       <Position27>
         <Filename Value="main.pas"/>
-        <Caret Line="880" Column="64" TopLine="867"/>
+        <Caret Line="191" Column="14" TopLine="178"/>
       </Position27>
       <Position28>
         <Filename Value="main.pas"/>
-        <Caret Line="191" Column="14" TopLine="178"/>
+        <Caret Line="972" Column="19" TopLine="953"/>
       </Position28>
       <Position29>
         <Filename Value="main.pas"/>
-        <Caret Line="972" Column="19" TopLine="953"/>
+        <Caret Line="358" Column="18" TopLine="337"/>
       </Position29>
       <Position30>
         <Filename Value="main.pas"/>
-        <Caret Line="358" Column="18" TopLine="337"/>
+        <Caret Line="344" Column="31" TopLine="335"/>
       </Position30>
     </JumpHistory>
     <RunParams>
       <FormatVersion Value="2"/>
-      <Modes Count="0" ActiveMode="default"/>
+      <Modes ActiveMode="default"/>
     </RunParams>
   </ProjectSession>
   <Debugging>
-    <Watches Count="5">
-      <Item1>
+    <Watches>
+      <Item>
         <Expression Value="n"/>
-      </Item1>
-      <Item2>
+      </Item>
+      <Item>
         <Expression Value="s1"/>
-      </Item2>
-      <Item3>
+      </Item>
+      <Item>
         <Expression Value="s2"/>
-      </Item3>
-      <Item4>
+      </Item>
+      <Item>
         <Expression Value="name_serv"/>
-      </Item4>
-      <Item5>
+      </Item>
+      <Item>
         <Expression Value="tmp"/>
-      </Item5>
+      </Item>
     </Watches>
   </Debugging>
 </CONFIG>
