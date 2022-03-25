@@ -182,7 +182,7 @@ var
   superuser: boolean=true;
   oppgroup: boolean = false;
   oppUsers: string = '5,9,11,14,115,410,70';
-  oppServers:string = '381,814';
+  oppServers:string = '381';
   serversOmitted: string = '381';
   intervalOpp: integer = 15;
   flagexit:boolean = false;
@@ -745,10 +745,13 @@ begin
       IniSection:='PERMITIONS'; //указываем секцию
         serversOmitted:=  ReadString('servers omitted',serversOmitted);
         oppUsers:=   ReadString('opp users',oppUsers);
-        oppServers:= oppServers +','+ ReadString('opp servers omitted',oppServers);
+        if not oppServers.IsEmpty then
+         oppServers:= oppServers +','+ ReadString('opp servers omitted',oppServers)
+         else
+           oppServers:= ReadString('opp servers omitted',oppServers);
         intervalOpp:=  math.Max(intervalOpp, abs(ReadInteger('opp interval', intervalOpp)));
 
-        if oppServers='' then oppServers:='0';
+        if oppServers.IsEmpty then oppServers:='0';
         if serversOmitted='' then serversOmitted:='0';
         //if intervalOpp='' then intervalOpp:=
 
@@ -923,7 +926,7 @@ begin
   //    form1.ZQuery1.SQL.Add('and d.real_virtual=1 and f.id not in (5,814) ');
   // form1.ZQuery1.SQL.Add('order by d.real_virtual desc, f.name; ');
 
-   //showmessage(form1.ZQuery1.SQL.Text);
+   //showmessage(form1.ZQuery1.SQL.Text);//$
    try
       form1.ZQuery1.open;
       if form1.ZQuery1.RecordCount=0 then
@@ -2024,19 +2027,19 @@ if  ReadIniLocal(form1.IniPropStorage1,ExtractFilePath(Application.ExeName)+'loc
      halt;
    end;
 
-id_user := 5;
+id_user := 5555;
 superuser :=true;
 
 If not FileExistsUTF8(ExtractFilePath(Application.ExeName)+'cheater') then
   begin
-   //{$IFDEF WINDOWS}
+   {$IFDEF WINDOWS}
     superuser:=false;
     id_user:=0;
     //открыть форму регистрации
     FormAuth:=TFormAuth.create(self);
     FormAuth.ShowModal;
     FreeAndNil(FormAuth);
-   //{$ENDIF}
+   {$ENDIF}
    end;
 
  //id_user := 5;
@@ -2057,7 +2060,7 @@ form1.Edit2.Text:=connectini[2];
 form1.Edit5.Text:=connectini[3];
 
   // Установки даты и времени
- //decimalseparator:='.';
+ decimalseparator:='.';
  //DateSeparator := '.';
  //ShortDateFormat := 'dd.mm.yyyy';
  //LongDateFormat  := 'dd.mm.yyyy';
@@ -2113,7 +2116,7 @@ if fllog then
     fllog := false;
 
 //включаем таймер
-if not oppgroup and not flagtimer then
+if not oppgroup and flagtimer then
   form1.auto_sync.Enabled:=true;
 end;
 

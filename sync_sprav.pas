@@ -112,7 +112,8 @@ const maxt = 50;
    //BlobStreamW: TStream;
    //flag_blob:boolean;
    newData: boolean;
-
+   fl2error: boolean = false;
+   flerror: boolean = false;
     Fieldtypenames : Array [TFieldType] of String[15] =
     (
       'Unknown',
@@ -219,7 +220,6 @@ begin
          form1.write_log('!!!19 Не найдено таблиц для синхронизации данных !');
          //application.ProcessMessages;
          //form1.ZConnection1.Disconnect;
-         Result:=0;
          exit;
        end;
      except
@@ -256,10 +256,12 @@ begin
                      form1.ZConnection2.Rollback;
                      exit;
                    end;
+   flerror:=false;
 
    //ИДЕМ ПО СПИСКУ ТАБЛИЦ
    for n:=0 to form1.ZQuery1.RecordCount-1 do
       begin
+        if flerror then break;
          //-------------------------------- На ЛС определяем для текущей таблицы максимальный timestamp
         // Очищаем прямые таблицы с группировкой данных по createdate
 
@@ -286,10 +288,10 @@ begin
          except
           form1.write_log('- Таблица '+tek_table+' недоступна на локальном сервере !');
           form1.write_log('!!!22 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+          flerror:=true;
           //application.ProcessMessages;
           //form1.ZConnection1.Disconnect;
-          form1.ZConnection2.Disconnect;
-          exit;
+          break;
           end;
              If form1.ZQuery2.RecordCount>0 then
              form1.write_log('xxx Таблица '+tek_table+' очищена за '+interval+' дней. Удалено '+inttostr(form1.ZQuery2.RecordCount)+' записей.')
@@ -313,7 +315,7 @@ begin
           form1.ZQuery2.open;
          except
           form1.write_log('- Таблица '+tek_table+' недоступна на локальном сервере !');
-          form1.write_log('!!!23 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+          form1.write_log('!!!23 WARNIGS !!! WARNINGS !!! ');
           //application.ProcessMessages;
           //form1.ZConnection1.Disconnect;
           //form1.ZConnection2.Disconnect;
@@ -341,10 +343,11 @@ begin
          except
           //showmessage(form1.ZQuery3.SQL.Text);
           form1.write_log('- Таблица '+tek_table+' недоступна на локальном сервере !');
-          form1.write_log('!!!24 ОСТАНОВКА   ПРОДОЛЖЕНИЕ СИНХРОНИЗАЦИИ ДАННЫХ НЕВОЗМОЖНО ');
+          form1.write_log('!!!24 WARNING !!! WARNING !!! ');
           //form1.ZConnection1.Disconnect;
-          form1.ZConnection2.Disconnect;
-          exit;
+          //form1.ZConnection2.Disconnect;
+          flerror:=true;
+          break;
          end;
           if form1.ZQuery3.RecordCount=0 then
               begin
@@ -362,8 +365,10 @@ begin
          if form1.ZQuery3.RecordCount>0 then
             begin
                //kol_zap:=0;
+                fl2error := false;
                  for m:=1 to form1.ZQuery3.RecordCount do
                    begin
+                      if fl2error then break;
                       inc(j);
                      //flag_blob:=false;
                      If m>1 then form1.Memo1.Lines.Delete(form1.Memo1.Lines.Count-1);
@@ -475,6 +480,7 @@ begin
                      except
                       form1.write_log('!!!25 ОШИБКА SQL запроса '+#13+form1.ZQuery2.SQL.Text);
                       form1.ZQuery2.Close;
+                      fl2error:=true;
                       break;
                     //showmessage(form1.ZQuery2.SQL.Text);
                      end;
@@ -489,10 +495,13 @@ begin
                 form1.ZQuery3.Next;
                  //If n=5 then break;//$
              end;
+
+            if fl2error then break;
                 //доп проверка
              If (j>0) then
                  begin
                    Form1.write_log('---!!Warning!!--- '+inttostr(j)+' записей НЕДОПИСАНО в таблицу! ');
+                   flerror:=true;
                  end;
 
 
@@ -500,7 +509,13 @@ begin
         end;
 
      form1.ZQuery1.Next;
+
    end;
+   if flerror then
+      begin
+      form1.ZConnection2.Disconnect;
+       exit;
+      end;
    //-------------------------- Завершение транзакции
        form1.Zconnection2.Commit;
     except
@@ -761,7 +776,10 @@ begin
 
   //form1.ZConnection1.Disconnect;
   form1.ZConnection2.Disconnect;
-  Result:=0;
+  if flerror or fl2error then
+     Result:=1
+  else
+      Result:=0;
 end;
 
 
@@ -1149,6 +1167,7 @@ form1.write_log('- Создание av-trip-atp-ats данные по рейса
   form1.ZQuery2.SQL.Clear;
 form1.ZQuery2.SQL.Add('select sync_trip_atp_ats_virtual_del('+quotedstr('atp2')+');');
 form1.ZQuery2.SQL.Add('FETCH ALL FROM atp2;');
+//showmessage(form1.ZQuery2.SQL.Text);//$
        try
          form1.ZQuery2.open;
        except
@@ -1181,6 +1200,7 @@ else
 form1.ZQuery2.SQL.Clear;
 form1.ZQuery2.SQL.Add('select sync_trip_atp_ats_virtual_ins('+quotedstr('tt')+');');
 form1.ZQuery2.SQL.Add('FETCH ALL FROM tt;');
+//showmessage(form1.ZQuery2.SQL.Text);//$
          try
            form1.ZQuery2.open;
          except
@@ -1212,6 +1232,7 @@ form1.ZQuery2.SQL.Add('FETCH ALL FROM tt;');
    form1.ZQuery2.Close;
    form1.ZQuery2.SQL.Clear;
    form1.ZQuery2.SQL.Add('select id_shedule FROM av_trip_atp_ats;');
+   //showmessage(form1.ZQuery2.SQL.Text);//$
         try
            form1.ZQuery2.open;
          except
@@ -1236,7 +1257,6 @@ form1.write_log('- Обновление av-trip-dog-lic данных по рей
 form1.ZQuery2.SQL.Clear;
 form1.ZQuery2.SQL.Add('select sync_trip_dog_lic('+quotedstr('tdog2')+');');
 form1.ZQuery2.SQL.Add('FETCH ALL FROM tdog2;');
-
  //form1.write_log(form1.ZQuery2.SQL.Text);//$
 try
   form1.ZQuery2.open;

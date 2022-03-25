@@ -1,18 +1,18 @@
 object FormAuth: TFormAuth
-  Left = 42
+  Left = 0
   Height = 768
-  Top = 175
-  Width = 1333
+  Top = 169
+  Width = 1274
   ActiveControl = Edit1
   BorderIcons = [biSystemMenu, biMinimize]
   Caption = 'FormAuth'
   ClientHeight = 768
-  ClientWidth = 1333
+  ClientWidth = 1274
   KeyPreview = True
   OnActivate = FormActivate
   OnKeyDown = FormKeyDown
   Position = poScreenCenter
-  LCLVersion = '1.6.0.4'
+  LCLVersion = '2.0.8.0'
   object Shape1: TShape
     AnchorSideLeft.Control = Owner
     AnchorSideTop.Control = Owner
@@ -23,7 +23,7 @@ object FormAuth: TFormAuth
     Left = 0
     Height = 768
     Top = 0
-    Width = 1333
+    Width = 1274
     Anchors = [akTop, akLeft, akRight, akBottom]
     Brush.Color = 16509141
     Pen.Style = psClear
@@ -33,7 +33,7 @@ object FormAuth: TFormAuth
     AnchorSideLeft.Side = asrCenter
     AnchorSideTop.Control = Owner
     AnchorSideTop.Side = asrCenter
-    Left = 154
+    Left = 125
     Height = 480
     Top = 144
     Width = 1024
@@ -1643,7 +1643,7 @@ object FormAuth: TFormAuth
     AnchorSideLeft.Side = asrCenter
     AnchorSideTop.Control = Owner
     AnchorSideTop.Side = asrCenter
-    Left = 473
+    Left = 444
     Height = 224
     Top = 272
     Width = 386
